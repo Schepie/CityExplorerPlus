@@ -36,6 +36,7 @@ export interface POI {
   category: InterestId;
   categoryLabel: string;
   description: string;
+  descriptionLang?: 'nl' | 'en' | 'de' | 'fr';
   imageUrl?: string;
   wikipediaUrl?: string;
   wikipediaTag?: string;
@@ -46,6 +47,7 @@ export interface POI {
   distanceFromStart?: number;
   /** Distance along the generated route in meters */
   routeDistanceMeters?: number;
+  isCustomStop?: boolean;
 }
 
 export type ManeuverType =
@@ -75,6 +77,46 @@ export interface TurnStep {
   cumulativeDistanceMeters: number;
 }
 
+export interface ElevationPoint {
+  distanceKm: number;
+  elevationM: number;
+}
+
+export interface WeatherInfo {
+  temperatureC: number;
+  windSpeedKmh: number;
+  windDirectionLabel: string;
+  precipitationProbPct: number;
+  conditionLabel: string;
+  emoji: string;
+}
+
+export type PitstopType = 'toilet' | 'water' | 'cafe';
+
+export interface Pitstop {
+  id: string;
+  type: PitstopType;
+  name: string;
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+}
+
+export interface CompletedTrip {
+  id: string;
+  routeName: string;
+  cityName?: string;
+  activity: ActivityMode;
+  completedAt: string;
+  distanceMeters: number;
+  durationSeconds: number;
+  avgSpeedKmh: number;
+  discoveredPois: Array<{ id: string; name: string; category: InterestId }>;
+  totalPoisOnRoute: number;
+}
+
+export type MapStyleMode = 'standard' | 'dark' | 'satellite';
+
 export interface GeneratedRoute {
   id: string;
   name: string;
@@ -86,6 +128,8 @@ export interface GeneratedRoute {
   coordinates: [number, number][];
   /** Cumulative distance at each coordinate index */
   cumulativeDistances: number[];
+  elevationProfile?: ElevationPoint[];
+  elevationGainMeters?: number;
   pois: POI[];
   steps: TurnStep[];
   interestsUsed: InterestId[];

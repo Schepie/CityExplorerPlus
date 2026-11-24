@@ -11,6 +11,7 @@ const POI_CACHE_KEY = 'cep_poi_wiki_cache_v1';
 
 interface WikiSummary {
   description: string;
+  descriptionLang?: 'nl' | 'en' | 'de' | 'fr';
   imageUrl?: string;
   wikipediaUrl?: string;
   cachedAt: number;
@@ -295,6 +296,7 @@ export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
         return {
           ...poi,
           description: cache[cacheKey].description,
+          descriptionLang: cache[cacheKey].descriptionLang ?? 'nl',
           imageUrl: cache[cacheKey].imageUrl,
           wikipediaUrl: cache[cacheKey].wikipediaUrl,
         };
@@ -307,11 +309,12 @@ export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
         return {
           ...poi,
           description: summary.description,
+          descriptionLang: summary.descriptionLang ?? 'nl',
           imageUrl: summary.imageUrl,
           wikipediaUrl: summary.wikipediaUrl,
         };
       }
-      return poi;
+      return { ...poi, descriptionLang: 'nl' as const };
     })
   );
 
@@ -323,27 +326,43 @@ export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
 
 async function fetchWikipediaSummary(
   poi: POI
-): Promise<{ description: string; imageUrl?: string; wikipediaUrl?: string } | null> {
-  // 1. Try explicit wikipedia tag (e.g. "nl:Domtoren" or "en:Dom Tower")
+): Promise<{
+  description: string;
+  descriptionLang: 'nl' | 'en' | 'de' | 'fr';
+  imageUrl?: string;
+  wikipediaUrl?: string;
+} | null> {
+  // 1. Try Dutch Wikipedia first by name (best experience for Dutch users)
+  const nlByName = await queryWikiRestSummary('nl', poi.name);
+  if (nlByName) return nlByName;
+
+  // 2. Try explicit wikipedia tag (e.g. "nl:Domtoren", "en:Eiffel Tower", "fr:Tour Eiffel", "de:Brandenburger Tor")
   if (poi.wikipediaTag) {
     const parts = poi.wikipediaTag.split(':');
-    const lang = parts.length > 1 ? parts[0] : 'nl';
+    const rawLang = parts.length > 1 ? parts[0].toLowerCase() : 'nl';
+    const lang: 'nl' | 'en' | 'de' | 'fr' =
+      rawLang === 'en' || rawLang === 'de' || rawLang === 'fr' ? rawLang : 'nl';
     const title = parts.length > 1 ? parts.slice(1).join(':') : parts[0];
     const res = await queryWikiRestSummary(lang, title);
     if (res) return res;
   }
 
-  // 2. Try Dutch Wikipedia by POI name
-  const nlRes = await queryWikiRestSummary('nl', poi.name);
-  if (nlRes) return nlRes;
+  // 3. Fallback to English Wikipedia (great for international city trips like Paris, London, Rome)
+  const enByName = await queryWikiRestSummary('en', poi.name);
+  if (enByName) return enByName;
 
   return null;
 }
 
 async function queryWikiRestSummary(
-  lang: string,
+  lang: 'nl' | 'en' | 'de' | 'fr',
   title: string
-): Promise<{ description: string; imageUrl?: string; wikipediaUrl?: string } | null> {
+): Promise<{
+  description: string;
+  descriptionLang: 'nl' | 'en' | 'de' | 'fr';
+  imageUrl?: string;
+  wikipediaUrl?: string;
+} | null> {
   try {
     const cleanTitle = encodeURIComponent(title.trim().replace(/ /g, '_'));
     const resp = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${cleanTitle}`);
@@ -357,6 +376,7 @@ async function queryWikiRestSummary(
 
     return {
       description: shortText,
+      descriptionLang: lang,
       imageUrl: data.thumbnail?.source,
       wikipediaUrl: data.content_urls?.mobile?.page || data.content_urls?.desktop?.page,
     };

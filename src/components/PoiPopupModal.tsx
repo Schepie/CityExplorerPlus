@@ -24,7 +24,11 @@ export function PoiPopupModal({ poi, speechRate, isNearbyTrigger, onClose }: Poi
     if (isSpeaking) {
       audioService.stopSpeaking();
     } else {
-      audioService.speakPoiNow(`${poi.name}. ${poi.description}`, speechRate);
+      audioService.speakPoiNow(
+        `${poi.name}. ${poi.description}`,
+        speechRate,
+        poi.descriptionLang ?? 'nl'
+      );
     }
   };
 
@@ -97,6 +101,11 @@ export function PoiPopupModal({ poi, speechRate, isNearbyTrigger, onClose }: Poi
           <p className="text-sm text-slate-700 leading-relaxed max-h-36 overflow-y-auto">
             {poi.description}
           </p>
+          {poi.descriptionLang && poi.descriptionLang !== 'nl' && (
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+              Taal gedetecteerd: {poi.descriptionLang.toUpperCase()} (voorleesstem past zich automatisch aan)
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-1">

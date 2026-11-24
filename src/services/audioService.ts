@@ -1,32 +1,49 @@
 type SpeechPriority = 'navigation' | 'poi';
+type SpeechLang = 'nl' | 'en' | 'de' | 'fr';
+
+const BCP47_MAP: Record<SpeechLang, string> = {
+  nl: 'nl-NL',
+  en: 'en-GB',
+  de: 'de-DE',
+  fr: 'fr-FR',
+};
 
 interface QueuedSpeech {
   text: string;
   priority: SpeechPriority;
   rate: number;
+  lang: SpeechLang;
 }
 
 class AudioService {
   private audioCtx: AudioContext | null = null;
   private queue: QueuedSpeech[] = [];
   private isSpeaking = false;
-  private preferredVoice: SpeechSynthesisVoice | null = null;
+  private voices: SpeechSynthesisVoice[] = [];
   private speakingListeners = new Set<(speaking: boolean) => void>();
 
   constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        // Prefer Dutch (nl-NL or nl-BE) voices
-        this.preferredVoice =
-          voices.find((v) => v.lang.toLowerCase() === 'nl-nl' && v.localService) ||
-          voices.find((v) => v.lang.toLowerCase().startsWith('nl')) ||
-          voices[0] ||
-          null;
+        this.voices = window.speechSynthesis.getVoices();
       };
       loadVoices();
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+  }
+
+  private pickVoice(lang: SpeechLang): SpeechSynthesisVoice | null {
+    if (this.voices.length === 0 && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      this.voices = window.speechSynthesis.getVoices();
+    }
+    const target = BCP47_MAP[lang].toLowerCase();
+    return (
+      this.voices.find((v) => v.lang.toLowerCase() === target && v.localService) ||
+      this.voices.find((v) => v.lang.toLowerCase().startsWith(lang) && v.localService) ||
+      this.voices.find((v) => v.lang.toLowerCase().startsWith(lang)) ||
+      this.voices[0] ||
+      null
+    );
   }
 
   /** Must be called inside a user click/tap handler to unlock audio on iOS Safari */
@@ -93,21 +110,19 @@ class AudioService {
   }
 
   /** Enqueue speech; navigation instructions take priority over POI stories */
-  public speak(text: string, priority: SpeechPriority, rate = 1.0): void {
+  public speak(text: string, priority: SpeechPriority, rate = 1.0, lang: SpeechLang = 'nl'): void {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     const clean = text.trim();
     if (!clean) return;
 
     if (priority === 'navigation') {
-      // Navigation interrupts any currently playing POI narration
       window.speechSynthesis.cancel();
       this.queue = this.queue.filter((item) => item.priority === 'navigation');
-      this.queue.unshift({ text: clean, priority, rate });
+      this.queue.unshift({ text: clean, priority, rate, lang });
       this.isSpeaking = false;
       this.processQueue();
     } else {
-      // POI narration waits politely behind navigation instructions
-      this.queue.push({ text: clean, priority, rate });
+      this.queue.push({ text: clean, priority, rate, lang });
       if (!this.isSpeaking) {
         this.processQueue();
       }
@@ -115,10 +130,10 @@ class AudioService {
   }
 
   /** Immediately read a POI aloud when user taps "Lees voor" */
-  public speakPoiNow(text: string, rate = 1.0): void {
+  public speakPoiNow(text: string, rate = 1.0, lang: SpeechLang = 'nl'): void {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    this.queue = [{ text: text.trim(), priority: 'poi', rate }];
+    this.queue = [{ text: text.trim(), priority: 'poi', rate, lang }];
     this.isSpeaking = false;
     this.processQueue();
   }
@@ -149,10 +164,11 @@ class AudioService {
 
     const next = this.queue.shift()!;
     const utterance = new SpeechSynthesisUtterance(next.text);
-    utterance.lang = 'nl-NL';
+    utterance.lang = BCP47_MAP[next.lang];
     utterance.rate = Math.min(1.5, Math.max(0.7, next.rate));
-    if (this.preferredVoice) {
-      utterance.voice = this.preferredVoice;
+    const voice = this.pickVoice(next.lang);
+    if (voice) {
+      utterance.voice = voice;
     }
 
     this.isSpeaking = true;

@@ -14,6 +14,7 @@ import {
   haversineMeters,
   projectOntoRoute,
 } from '../utils/geo';
+import { fetchElevationProfile } from './elevationService';
 import { enrichPoisWithWikipedia, fetchPoisAround } from './poiService';
 
 interface RoutingResult {
@@ -492,8 +493,11 @@ export async function generateLoopRoute(params: {
     })
     .sort((a, b) => (a.routeDistanceMeters ?? 0) - (b.routeDistanceMeters ?? 0));
 
-  onProgress?.('Verhalen & foto’s bij bezienswaardigheden ophalen...');
-  const enrichedPois = await enrichPoisWithWikipedia(routePoisRaw);
+  onProgress?.('Verhalen, foto’s & hoogteprofiel ophalen...');
+  const [enrichedPois, elevation] = await Promise.all([
+    enrichPoisWithWikipedia(routePoisRaw),
+    fetchElevationProfile(bestRouting.coordinates, cumulativeDistances),
+  ]);
 
   const estimatedDurationSeconds = Math.round(
     (bestRouting.distanceMeters / 1000 / Math.max(1, speedKmh)) * 3600
@@ -518,6 +522,8 @@ export async function generateLoopRoute(params: {
     estimatedDurationSeconds,
     coordinates: bestRouting.coordinates,
     cumulativeDistances,
+    elevationProfile: elevation?.profile,
+    elevationGainMeters: elevation?.gainMeters,
     pois: enrichedPois,
     steps: bestRouting.steps,
     interestsUsed: effectiveInterests,
@@ -525,5 +531,98 @@ export async function generateLoopRoute(params: {
     startLocation: start,
     createdAt: new Date().toISOString(),
     routingProvider: bestRouting.provider,
+  };
+}
+
+/** Rebuild an existing loop after the user removes a POI or adds a custom stop */
+export async function rebuildRouteWithPois(
+  baseRoute: GeneratedRoute,
+  updatedPois: POI[],
+  speedKmh: number,
+  orsApiKey?: string
+): Promise<GeneratedRoute> {
+  const waypoints: LatLng[] = [
+    baseRoute.startLocation,
+    ...updatedPois.map((p) => ({ lat: p.lat, lng: p.lng })),
+    baseRoute.startLocation,
+  ];
+
+  let routing: RoutingResult;
+  if (orsApiKey && orsApiKey.trim().length > 10) {
+    try {
+      routing = await routeWithOpenRouteService(waypoints, baseRoute.activity, orsApiKey.trim());
+    } catch {
+      routing = await routeWithOsrm(waypoints, baseRoute.activity);
+    }
+  } else {
+    routing = await routeWithOsrm(waypoints, baseRoute.activity);
+  }
+
+  const cumulativeDistances = computeCumulativeDistances(routing.coordinates);
+  const reorderedPois = updatedPois
+    .map((p) => {
+      const proj = projectOntoRoute({ lat: p.lat, lng: p.lng }, routing.coordinates, cumulativeDistances);
+      return { ...p, routeDistanceMeters: proj.distanceAlongMeters };
+    })
+    .sort((a, b) => (a.routeDistanceMeters ?? 0) - (b.routeDistanceMeters ?? 0));
+
+  const elevation = await fetchElevationProfile(routing.coordinates, cumulativeDistances);
+
+  return {
+    ...baseRoute,
+    actualDistanceMeters: routing.distanceMeters,
+    estimatedDurationSeconds: Math.round((routing.distanceMeters / 1000 / Math.max(1, speedKmh)) * 3600),
+    coordinates: routing.coordinates,
+    cumulativeDistances,
+    elevationProfile: elevation?.profile,
+    elevationGainMeters: elevation?.gainMeters,
+    pois: reorderedPois,
+    steps: routing.steps,
+    routingProvider: routing.provider,
+  };
+}
+
+/** Recalculate route from current GPS position back onto the remaining loop POIs & finish */
+export async function rerouteFromCurrentPosition(
+  currentPos: LatLng,
+  activeRoute: GeneratedRoute,
+  visitedPoiIds: string[],
+  speedKmh: number,
+  orsApiKey?: string
+): Promise<GeneratedRoute> {
+  const visitedSet = new Set(visitedPoiIds);
+  const remainingPois = activeRoute.pois.filter((p) => !visitedSet.has(p.id));
+  const waypoints: LatLng[] = [
+    currentPos,
+    ...remainingPois.slice(0, 5).map((p) => ({ lat: p.lat, lng: p.lng })),
+    activeRoute.startLocation,
+  ];
+
+  let routing: RoutingResult;
+  if (orsApiKey && orsApiKey.trim().length > 10) {
+    try {
+      routing = await routeWithOpenRouteService(waypoints, activeRoute.activity, orsApiKey.trim());
+    } catch {
+      routing = await routeWithOsrm(waypoints, activeRoute.activity);
+    }
+  } else {
+    routing = await routeWithOsrm(waypoints, activeRoute.activity);
+  }
+
+  const cumulativeDistances = computeCumulativeDistances(routing.coordinates);
+  const updatedPois = activeRoute.pois.map((p) => {
+    const proj = projectOntoRoute({ lat: p.lat, lng: p.lng }, routing.coordinates, cumulativeDistances);
+    return { ...p, routeDistanceMeters: proj.distanceAlongMeters };
+  });
+
+  return {
+    ...activeRoute,
+    actualDistanceMeters: routing.distanceMeters,
+    estimatedDurationSeconds: Math.round((routing.distanceMeters / 1000 / Math.max(1, speedKmh)) * 3600),
+    coordinates: routing.coordinates,
+    cumulativeDistances,
+    pois: updatedPois,
+    steps: routing.steps,
+    routingProvider: routing.provider,
   };
 }

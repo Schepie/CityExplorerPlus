@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import { INTEREST_MAP } from '../data/interests';
-import type { GeneratedRoute, LatLng, NavigationStatus, POI } from '../types';
+import type { GeneratedRoute, LatLng, MapStyleMode, NavigationStatus, Pitstop, POI } from '../types';
 
 interface MapViewProps {
   center: LatLng;
   route: GeneratedRoute | null;
   navState: NavigationStatus | null;
-  mapStyle: 'standard' | 'satellite';
+  mapStyle: MapStyleMode;
   is3D: boolean;
+  pitstops?: Pitstop[];
   onPitchChange?: (tilted: boolean) => void;
   onSelectPoi: (poi: POI) => void;
   onMapClickStart?: (pos: LatLng) => void;
@@ -18,6 +19,8 @@ interface MapViewProps {
 const ROUTE_SOURCE_ID = 'cep-route-source';
 const ROUTE_CASING_LAYER = 'cep-route-casing';
 const ROUTE_LINE_LAYER = 'cep-route-line';
+const DARK_SOURCE_ID = 'cep-dark-source';
+const DARK_LAYER_ID = 'cep-dark-layer';
 const SATELLITE_SOURCE_ID = 'cep-satellite-source';
 const SATELLITE_LAYER_ID = 'cep-satellite-layer';
 const SATELLITE_LABELS_SOURCE_ID = 'cep-satellite-labels-source';
@@ -29,6 +32,7 @@ export function MapView({
   navState,
   mapStyle,
   is3D,
+  pitstops = [],
   onPitchChange,
   onSelectPoi,
   onMapClickStart,
@@ -38,6 +42,7 @@ export function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const poiMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const pitstopMarkersRef = useRef<maplibregl.Marker[]>([]);
   const mapLoadedRef = useRef(false);
 
   const onSelectPoiRef = useRef(onSelectPoi);
@@ -79,6 +84,27 @@ export function MapView({
 
     map.on('load', () => {
       mapLoadedRef.current = true;
+
+      // Dark / Night navigation map layer (Carto Dark Matter, zero-flicker toggle)
+      map.addSource(DARK_SOURCE_ID, {
+        type: 'raster',
+        tiles: [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        ],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: '© CARTO, OpenStreetMap',
+      });
+
+      map.addLayer({
+        id: DARK_LAYER_ID,
+        type: 'raster',
+        source: DARK_SOURCE_ID,
+        layout: {
+          visibility: mapStyle === 'dark' ? 'visible' : 'none',
+        },
+      });
 
       // Satellite imagery & place labels overlay (toggled smoothly without resetting route layers)
       map.addSource(SATELLITE_SOURCE_ID, {
@@ -187,6 +213,8 @@ export function MapView({
     return () => {
       poiMarkersRef.current.forEach((m) => m.remove());
       poiMarkersRef.current = [];
+      pitstopMarkersRef.current.forEach((m) => m.remove());
+      pitstopMarkersRef.current = [];
       userMarker.remove();
       map.remove();
       mapRef.current = null;
@@ -222,25 +250,52 @@ export function MapView({
     }
   }, [center, route, navState?.isActive, navState?.currentPosition]);
 
-  // Toggle between standard street map and satellite imagery smoothly
+  // Toggle between standard, dark (night), and satellite imagery smoothly
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
-    const vis = mapStyle === 'satellite' ? 'visible' : 'none';
+    if (map.getLayer(DARK_LAYER_ID)) {
+      map.setLayoutProperty(DARK_LAYER_ID, 'visibility', mapStyle === 'dark' ? 'visible' : 'none');
+    }
+    const satVis = mapStyle === 'satellite' ? 'visible' : 'none';
     if (map.getLayer(SATELLITE_LAYER_ID)) {
-      map.setLayoutProperty(SATELLITE_LAYER_ID, 'visibility', vis);
+      map.setLayoutProperty(SATELLITE_LAYER_ID, 'visibility', satVis);
     }
     if (map.getLayer(SATELLITE_LABELS_LAYER_ID)) {
-      map.setLayoutProperty(SATELLITE_LABELS_LAYER_ID, 'visibility', vis);
+      map.setLayoutProperty(SATELLITE_LABELS_LAYER_ID, 'visibility', satVis);
     }
     if (map.getLayer(ROUTE_LINE_LAYER)) {
       map.setPaintProperty(
         ROUTE_LINE_LAYER,
         'line-color',
-        mapStyle === 'satellite' ? '#14b8a6' : '#0d9488'
+        mapStyle === 'standard' ? '#0d9488' : '#2dd4bf'
       );
     }
   }, [mapStyle]);
+
+  // Render nearby pitstop markers (toilet / water / cafe)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    pitstopMarkersRef.current.forEach((m) => m.remove());
+    pitstopMarkersRef.current = [];
+
+    const emojiByType = { toilet: '🚻', water: '💧', cafe: '☕' };
+    const colorByType = { toilet: '#0284c7', water: '#06b6d4', cafe: '#e11d48' };
+
+    pitstops.forEach((ps) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'w-9 h-9 flex items-center justify-center';
+      wrapper.style.zIndex = '12';
+      wrapper.title = `${ps.name} (${ps.distanceMeters} m)`;
+      wrapper.innerHTML = `<div class="w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-sm" style="background:${colorByType[ps.type]}">${emojiByType[ps.type]}</div>`;
+      const marker = new maplibregl.Marker({ element: wrapper, anchor: 'center' })
+        .setLngLat([ps.lng, ps.lat])
+        .addTo(map);
+      pitstopMarkersRef.current.push(marker);
+    });
+  }, [pitstops]);
 
   // Recenter camera when recenterSignal changes or start location changes (outside nav)
   useEffect(() => {

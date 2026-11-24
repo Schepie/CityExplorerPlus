@@ -1,39 +1,52 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bookmark, Compass, Crosshair, Layers, Settings, WifiOff } from 'lucide-react';
+import { Bookmark, Compass, Crosshair, Layers, Moon, Settings, Sun, WifiOff } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { NavigationOverlay } from './components/NavigationOverlay';
 import { PoiPopupModal } from './components/PoiPopupModal';
 import { RoutePlannerSheet } from './components/RoutePlannerSheet';
 import { RoutePreviewSheet } from './components/RoutePreviewSheet';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { ShareRouteModal } from './components/ShareRouteModal';
+import { TripSummaryModal } from './components/TripSummaryModal';
 import { useNavigation } from './hooks/useNavigation';
 import { reverseGeocode } from './services/geocodingService';
 import {
+  addCompletedTrip,
+  getAllCompletedTrips,
   getAllSavedRoutes,
   prepareRouteForOffline,
+  removeCompletedTrip,
   removeSavedRoute,
 } from './services/offlineService';
-import { generateLoopRoute } from './services/routingService';
+import { fetchNearbyPitstops } from './services/pitstopService';
+import { generateLoopRoute, rebuildRouteWithPois } from './services/routingService';
 import { loadSettings, saveSettings } from './services/storageService';
+import { fetchWeatherAt } from './services/weatherService';
 import type {
   ActivityMode,
   AppSettings,
+  CompletedTrip,
   GeneratedRoute,
   InterestId,
   LatLng,
+  MapStyleMode,
+  Pitstop,
+  PitstopType,
   POI,
   SavedRoute,
   SearchPlace,
   TargetType,
+  WeatherInfo,
 } from './types';
 import { generateGpx } from './utils/geo';
+import { parseShareFromUrl } from './utils/shareRoute';
 
-// Default fallback start location (Utrecht Centrum) if GPS is unavailable on desktop
 const FALLBACK_POS: LatLng = { lat: 52.0907, lng: 5.1214 };
 
 export function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  const [completedTrips, setCompletedTrips] = useState<CompletedTrip[]>([]);
   const [isOffline, setIsOffline] = useState<boolean>(
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
@@ -52,15 +65,24 @@ export function App() {
   const [durationMin, setDurationMin] = useState<number>(60);
   const [selectedInterests, setSelectedInterests] = useState<InterestId[]>([]);
 
-  // Route & UI state
-  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+  // Route, Map & UI state
+  const [mapStyle, setMapStyle] = useState<MapStyleMode>('standard');
   const [is3D, setIs3D] = useState<boolean>(false);
   const [route, setRoute] = useState<GeneratedRoute | null>(null);
+  const [weather, setWeather] = useState<WeatherInfo | null>(null);
+  const [pitstops, setPitstops] = useState<Pitstop[]>([]);
+  const [loadingPitstops, setLoadingPitstops] = useState(false);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressText, setProgressText] = useState('');
   const [errorText, setErrorText] = useState<string | null>(null);
   const [inspectedPoi, setInspectedPoi] = useState<POI | null>(null);
-  const [drawerState, setDrawerState] = useState<{ open: boolean; tab: 'options' | 'saved' }>({
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [summaryTrip, setSummaryTrip] = useState<CompletedTrip | null>(null);
+  const [drawerState, setDrawerState] = useState<{
+    open: boolean;
+    tab: 'options' | 'saved' | 'diary';
+  }>({
     open: false,
     tab: 'options',
   });
@@ -70,16 +92,24 @@ export function App() {
 
   const {
     navState,
+    isRerouting,
     startNavigation,
     stopNavigation,
     dismissPoiPopup,
     openPoiPopup,
     setSimulationSpeed,
-  } = useNavigation({ route, settings });
+    triggerReroute,
+    getElapsedSeconds,
+  } = useNavigation({
+    route,
+    settings,
+    onRouteReplaced: (newRoute) => setRoute(newRoute),
+  });
 
-  // Load saved routes from IndexedDB on startup
+  // Load saved routes & completed trips diary from IndexedDB
   useEffect(() => {
     getAllSavedRoutes().then(setSavedRoutes);
+    getAllCompletedTrips().then(setCompletedTrips);
   }, []);
 
   // Track online/offline status
@@ -92,6 +122,61 @@ export function App() {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
     };
+  }, []);
+
+  // Fetch live weather when previewing a route
+  useEffect(() => {
+    if (!route || isOffline) {
+      setWeather(null);
+      return;
+    }
+    fetchWeatherAt(route.startLocation).then(setWeather);
+  }, [route?.id, isOffline]);
+
+  // Restore a shared route link (?share=...) automatically on mount
+  useEffect(() => {
+    const shared = parseShareFromUrl();
+    if (!shared) return;
+
+    setStartLocation(shared.start);
+    setActivity(shared.activity);
+    setDistanceKm(shared.targetDistanceKm);
+    setSelectedInterests(shared.interests);
+    if (shared.cityName) {
+      setSelectedCityName(shared.cityName);
+      setLocationLabel(shared.cityName);
+    }
+    setGpsStatus('manual');
+
+    // Clean query string so refreshing doesn't re-trigger
+    window.history.replaceState({}, '', window.location.pathname);
+
+    const spd =
+      shared.activity === 'walking' ? settings.walkingSpeedKmh : settings.cyclingSpeedKmh;
+    setIsGenerating(true);
+    generateLoopRoute({
+      start: shared.start,
+      activity: shared.activity,
+      targetDistanceKm: shared.targetDistanceKm,
+      selectedInterests: shared.interests,
+      sectorIndex: shared.sectorIndex,
+      speedKmh: spd,
+      orsApiKey: settings.orsApiKey,
+      onProgress: setProgressText,
+    })
+      .then((gen) => {
+        if (shared.cityName) {
+          const prefix = shared.activity === 'walking' ? 'Wandellus' : 'Fietslus';
+          gen.name = gen.name.replace(prefix, `${prefix} ${shared.cityName}`);
+        }
+        setRoute(gen);
+      })
+      .catch(() => {})
+      .finally(() => {
+        setIsGenerating(false);
+        setProgressText('');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleUpdateSettings = useCallback((patch: Partial<AppSettings>) => {
@@ -134,7 +219,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    requestGps();
+    if (!parseShareFromUrl()) {
+      requestGps();
+    }
   }, [requestGps]);
 
   const handlePickManualStart = useCallback(async (pos: LatLng) => {
@@ -193,7 +280,6 @@ export function App() {
         onProgress: setProgressText,
       });
 
-      // Include chosen city in route title for easy recognition in Saved Trips
       if (selectedCityName) {
         const prefix = activity === 'walking' ? 'Wandellus' : 'Fietslus';
         generated.name = generated.name.replace(prefix, `${prefix} ${selectedCityName}`);
@@ -210,6 +296,51 @@ export function App() {
     } finally {
       setIsGenerating(false);
       setProgressText('');
+    }
+  };
+
+  const handleRemovePoi = async (poiId: string) => {
+    if (!route || route.pois.length <= 1) return;
+    const remaining = route.pois.filter((p) => p.id !== poiId);
+    setIsGenerating(true);
+    try {
+      const rebuilt = await rebuildRouteWithPois(route, remaining, speedKmh, settings.orsApiKey);
+      setRoute(rebuilt);
+    } catch {
+      // Keep previous route if network error
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAddCustomStop = async (place: SearchPlace) => {
+    if (!route) return;
+    const customPoi: POI = {
+      id: `custom-${Date.now()}`,
+      name: place.name,
+      lat: place.lat,
+      lng: place.lng,
+      category: 'toerisme',
+      categoryLabel: 'Eigen tussenstop',
+      description: `${place.name}${place.subtitle ? ` (${place.subtitle})` : ''} — jouw zelf toegevoegde tussenstop.`,
+      descriptionLang: 'nl',
+      tags: {},
+      score: 100,
+      isCustomStop: true,
+    };
+    setIsGenerating(true);
+    try {
+      const rebuilt = await rebuildRouteWithPois(
+        route,
+        [...route.pois, customPoi],
+        speedKmh,
+        settings.orsApiKey
+      );
+      setRoute(rebuilt);
+    } catch {
+      // Ignore error
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -240,10 +371,55 @@ export function App() {
     }
   };
 
-  const handleDeleteSavedRoute = async (id: string) => {
-    const updated = await removeSavedRoute(id);
-    setSavedRoutes(updated);
+  const handleStopNavigationWithSummary = async () => {
+    if (route && navState && navState.distanceCoveredMeters > 80) {
+      const elapsedSec = getElapsedSeconds();
+      const distKm = navState.distanceCoveredMeters / 1000;
+      const avgSpeed = elapsedSec > 0 ? Math.min(45, (distKm / elapsedSec) * 3600) : speedKmh;
+      const triggeredSet = new Set(navState.triggeredPoiIds);
+
+      const trip: CompletedTrip = {
+        id: `trip-${Date.now()}`,
+        routeName: route.name,
+        cityName: selectedCityName,
+        activity: route.activity,
+        completedAt: new Date().toISOString(),
+        distanceMeters: Math.round(navState.distanceCoveredMeters),
+        durationSeconds: elapsedSec,
+        avgSpeedKmh: Number(avgSpeed.toFixed(1)),
+        discoveredPois: route.pois
+          .filter((p) => triggeredSet.has(p.id))
+          .map((p) => ({ id: p.id, name: p.name, category: p.category })),
+        totalPoisOnRoute: route.pois.length,
+      };
+      const updatedTrips = await addCompletedTrip(trip);
+      setCompletedTrips(updatedTrips);
+      setSummaryTrip(trip);
+    }
+    setPitstops([]);
+    setIs3D(false);
+    stopNavigation();
   };
+
+  const handleSearchPitstops = async (type: PitstopType) => {
+    const center = navState?.currentPosition ?? startLocation;
+    setLoadingPitstops(true);
+    try {
+      const found = await fetchNearbyPitstops(center, type, 900);
+      setPitstops(found);
+    } finally {
+      setLoadingPitstops(false);
+    }
+  };
+
+  const cycleMapStyle = () => {
+    setMapStyle((prev) =>
+      prev === 'standard' ? 'dark' : prev === 'dark' ? 'satellite' : 'standard'
+    );
+  };
+
+  const mapStyleLabel =
+    mapStyle === 'standard' ? 'Kaart' : mapStyle === 'dark' ? 'Nacht' : 'Satelliet';
 
   const handleSelectPoi = (poi: POI) => {
     if (navState?.isActive) {
@@ -265,6 +441,7 @@ export function App() {
         navState={navState}
         mapStyle={mapStyle}
         is3D={is3D}
+        pitstops={pitstops}
         onPitchChange={setIs3D}
         onSelectPoi={handleSelectPoi}
         onMapClickStart={!route && !navState?.isActive ? handlePickManualStart : undefined}
@@ -290,14 +467,12 @@ export function App() {
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5">
-              {/* Prominent "Mijn Trips" button for prepared & offline trips */}
               <button
                 type="button"
                 onClick={() => setDrawerState({ open: true, tab: 'saved' })}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-teal-50 text-slate-800 shadow-lg border border-slate-200/80 text-xs font-bold transition cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-teal-50 text-slate-800 shadow-lg border border-slate-200/80 text-xs font-bold transition cursor-pointer"
               >
                 <Bookmark className="w-4 h-4 text-teal-600" />
-                <span className="hidden xs:inline">Trips</span>
                 {savedRoutes.length > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-teal-600 text-white text-[10px] leading-none">
                     {savedRoutes.length}
@@ -309,7 +484,7 @@ export function App() {
                 type="button"
                 onClick={() => setIs3D((prev) => !prev)}
                 aria-label="Wissel tussen 2D en 3D kaartweergave"
-                title={is3D ? 'Schakel naar 2D bovenaanzicht' : 'Kantel kaart naar 3D (zoals Google Maps)'}
+                title={is3D ? 'Schakel naar 2D' : 'Kantel kaart naar 3D'}
                 className={`px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-extrabold transition cursor-pointer ${
                   is3D
                     ? 'bg-teal-600 text-white border-teal-500'
@@ -321,21 +496,23 @@ export function App() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setMapStyle((prev) => (prev === 'standard' ? 'satellite' : 'standard'))
-                }
-                aria-label="Wissel tussen kaart en satelliet"
-                title={mapStyle === 'satellite' ? 'Toon gewone kaart' : 'Toon satellietbeeld'}
-                className={`flex items-center gap-1.5 px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-bold transition cursor-pointer ${
-                  mapStyle === 'satellite'
-                    ? 'bg-teal-600 text-white border-teal-500'
+                onClick={cycleMapStyle}
+                aria-label="Wissel kaartstijl (Kaart, Nacht, Satelliet)"
+                title={`Huidige weergave: ${mapStyleLabel} (tik om te wisselen)`}
+                className={`flex items-center gap-1 px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-bold transition cursor-pointer ${
+                  mapStyle !== 'standard'
+                    ? 'bg-slate-900 text-white border-slate-700'
                     : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
                 }`}
               >
-                <Layers className="w-4 h-4" />
-                <span className="hidden sm:inline">
-                  {mapStyle === 'satellite' ? 'Kaart' : 'Satelliet'}
-                </span>
+                {mapStyle === 'dark' ? (
+                  <Moon className="w-4 h-4 text-amber-300" />
+                ) : mapStyle === 'satellite' ? (
+                  <Layers className="w-4 h-4 text-teal-300" />
+                ) : (
+                  <Sun className="w-4 h-4 text-teal-600" />
+                )}
+                <span className="hidden sm:inline">{mapStyleLabel}</span>
               </button>
 
               <button
@@ -350,16 +527,16 @@ export function App() {
                 aria-label="Centreer op locatie"
                 className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
               >
-                <Crosshair className="w-5 h-5" />
+                <Crosshair className="w-4 h-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setDrawerState({ open: true, tab: 'options' })}
-                aria-label="Open opties"
+                aria-label="Open opties en dagboek"
                 className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -406,6 +583,7 @@ export function App() {
       {route && !navState?.isActive && (
         <RoutePreviewSheet
           route={route}
+          weather={weather}
           isGenerating={isGenerating}
           isOffline={isOffline}
           savedEntry={savedEntry}
@@ -424,8 +602,11 @@ export function App() {
             startNavigation(true);
           }}
           onSaveOffline={() => handleSaveOffline()}
+          onShareRoute={() => setShareModalOpen(true)}
           onExportGpx={handleExportGpx}
           onSelectPoi={handleSelectPoi}
+          onRemovePoi={handleRemovePoi}
+          onAddCustomStop={handleAddCustomStop}
         />
       )}
 
@@ -437,7 +618,6 @@ export function App() {
               type="button"
               onClick={() => setIs3D((prev) => !prev)}
               aria-label="Wissel tussen 2D en 3D navigatie"
-              title={is3D ? 'Schakel naar 2D bovenaanzicht' : 'Schakel naar 3D navigatie'}
               className={`w-11 h-11 rounded-2xl shadow-xl border backdrop-blur-md text-xs font-black transition cursor-pointer ${
                 is3D
                   ? 'bg-teal-600 text-white border-teal-400'
@@ -448,36 +628,43 @@ export function App() {
             </button>
             <button
               type="button"
-              onClick={() =>
-                setMapStyle((prev) => (prev === 'standard' ? 'satellite' : 'standard'))
-              }
-              aria-label="Wissel tussen kaart en satelliet"
-              title={mapStyle === 'satellite' ? 'Toon gewone kaart' : 'Toon satellietbeeld'}
+              onClick={cycleMapStyle}
+              aria-label="Wissel kaartstijl (Kaart, Nacht, Satelliet)"
+              title={`Kaartstijl: ${mapStyleLabel}`}
               className={`w-11 h-11 flex items-center justify-center rounded-2xl shadow-xl border backdrop-blur-md transition cursor-pointer ${
-                mapStyle === 'satellite'
+                mapStyle !== 'standard'
                   ? 'bg-teal-600 text-white border-teal-400'
                   : 'bg-slate-900/90 text-white border-slate-700 hover:bg-slate-800'
               }`}
             >
-              <Layers className="w-5 h-5" />
+              {mapStyle === 'dark' ? (
+                <Moon className="w-5 h-5 text-amber-300" />
+              ) : mapStyle === 'satellite' ? (
+                <Layers className="w-5 h-5" />
+              ) : (
+                <Sun className="w-5 h-5" />
+              )}
             </button>
           </div>
           <NavigationOverlay
             route={route}
             navState={navState}
             settings={settings}
+            isRerouting={isRerouting}
+            pitstops={pitstops}
+            loadingPitstops={loadingPitstops}
             onUpdateSettings={handleUpdateSettings}
             onOpenSettings={() => setDrawerState({ open: true, tab: 'options' })}
-            onStop={() => {
-              setIs3D(false);
-              stopNavigation();
-            }}
+            onStop={handleStopNavigationWithSummary}
             onSetSimSpeed={setSimulationSpeed}
+            onTriggerReroute={triggerReroute}
+            onSearchPitstops={handleSearchPitstops}
+            onClearPitstops={() => setPitstops([])}
           />
         </>
       )}
 
-      {/* POI Info Popup Modal (triggered by geofencing or tapping a POI marker) */}
+      {/* POI Info Popup Modal */}
       {activePopupPoi && (
         <PoiPopupModal
           poi={activePopupPoi}
@@ -493,7 +680,21 @@ export function App() {
         />
       )}
 
-      {/* Settings & Saved Offline Trips Drawer */}
+      {/* Share Route Modal (Link & QR Code) */}
+      {shareModalOpen && route && (
+        <ShareRouteModal
+          route={route}
+          cityName={selectedCityName}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
+
+      {/* Completed Trip Summary Modal */}
+      {summaryTrip && (
+        <TripSummaryModal trip={summaryTrip} onClose={() => setSummaryTrip(null)} />
+      )}
+
+      {/* Settings, Saved Offline Trips & Trip Diary Drawer */}
       <SettingsDrawer
         isOpen={drawerState.open}
         initialTab={drawerState.tab}
@@ -501,13 +702,15 @@ export function App() {
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         savedRoutes={savedRoutes}
+        completedTrips={completedTrips}
         onLoadSavedRoute={(loaded) => {
           stopNavigation();
           setStartLocation(loaded.startLocation);
           setRoute(loaded);
         }}
-        onDeleteSavedRoute={handleDeleteSavedRoute}
+        onDeleteSavedRoute={async (id) => setSavedRoutes(await removeSavedRoute(id))}
         onDownloadOfflineRoute={(item) => handleSaveOffline(item.route, item.cityName)}
+        onDeleteCompletedTrip={async (id) => setCompletedTrips(await removeCompletedTrip(id))}
       />
     </div>
   );

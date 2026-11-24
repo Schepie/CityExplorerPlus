@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioService } from '../services/audioService';
+import { rerouteFromCurrentPosition } from '../services/routingService';
 import type { AppSettings, GeneratedRoute, LatLng, NavigationStatus, POI } from '../types';
 import { haversineMeters, interpolateAlongRoute, projectOntoRoute } from '../utils/geo';
 import { useWakeLock } from './useWakeLock';
@@ -7,10 +8,12 @@ import { useWakeLock } from './useWakeLock';
 interface UseNavigationProps {
   route: GeneratedRoute | null;
   settings: AppSettings;
+  onRouteReplaced?: (newRoute: GeneratedRoute) => void;
 }
 
-export function useNavigation({ route, settings }: UseNavigationProps) {
+export function useNavigation({ route, settings, onRouteReplaced }: UseNavigationProps) {
   const [navState, setNavState] = useState<NavigationStatus | null>(null);
+  const [isRerouting, setIsRerouting] = useState(false);
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -18,11 +21,17 @@ export function useNavigation({ route, settings }: UseNavigationProps) {
   const routeRef = useRef(route);
   routeRef.current = route;
 
+  const onRouteReplacedRef = useRef(onRouteReplaced);
+  onRouteReplacedRef.current = onRouteReplaced;
+
   const lastCoordIndexRef = useRef<number>(0);
   const announcedStepRef = useRef<Set<number>>(new Set());
   const triggeredPoisRef = useRef<Set<string>>(new Set());
   const simDistanceRef = useRef<number>(0);
-  const simSpeedRef = useRef<number>(8); // 8x default simulation speed
+  const simSpeedRef = useRef<number>(8);
+  const startedAtRef = useRef<number>(Date.now());
+  const lastRerouteAtRef = useRef<number>(0);
+  const reroutingLockRef = useRef<boolean>(false);
 
   useWakeLock(Boolean(navState?.isActive && settings.keepScreenAwake));
 
@@ -111,11 +120,12 @@ export function useNavigation({ route, settings }: UseNavigationProps) {
           audioService.playPoiChime();
         }
         if (curSettings.poiAutoReadAloud) {
-          audioService.speak(
-            `Bezienswaardigheid in de buurt: ${newlyTriggeredPoi.name}. ${newlyTriggeredPoi.description}`,
-            'poi',
-            curSettings.speechRate
-          );
+          const lang = newlyTriggeredPoi.descriptionLang ?? 'nl';
+          const intro =
+            lang === 'nl'
+              ? `Bezienswaardigheid in de buurt: ${newlyTriggeredPoi.name}. ${newlyTriggeredPoi.description}`
+              : `${newlyTriggeredPoi.name}. ${newlyTriggeredPoi.description}`;
+          audioService.speak(intro, 'poi', curSettings.speechRate, lang);
         }
       }
 
@@ -161,6 +171,8 @@ export function useNavigation({ route, settings }: UseNavigationProps) {
       announcedStepRef.current = new Set([0]);
       triggeredPoisRef.current = new Set();
       simDistanceRef.current = 0;
+      startedAtRef.current = Date.now();
+      lastRerouteAtRef.current = 0;
 
       const startPos = route.startLocation;
       const firstStep = route.steps[0];
@@ -208,6 +220,73 @@ export function useNavigation({ route, settings }: UseNavigationProps) {
   const setSimulationSpeed = useCallback((multiplier: number) => {
     simSpeedRef.current = multiplier;
     setNavState((prev) => (prev ? { ...prev, simulationSpeedMultiplier: multiplier } : prev));
+  }, []);
+
+  const triggerReroute = useCallback(async () => {
+    const curRoute = routeRef.current;
+    if (!curRoute || !navState?.isActive || reroutingLockRef.current || !navigator.onLine) return;
+
+    reroutingLockRef.current = true;
+    lastRerouteAtRef.current = Date.now();
+    setIsRerouting(true);
+    try {
+      const speedKmh =
+        curRoute.activity === 'walking'
+          ? settingsRef.current.walkingSpeedKmh
+          : settingsRef.current.cyclingSpeedKmh;
+      const updated = await rerouteFromCurrentPosition(
+        navState.currentPosition,
+        curRoute,
+        Array.from(triggeredPoisRef.current),
+        speedKmh,
+        settingsRef.current.orsApiKey
+      );
+      lastCoordIndexRef.current = 0;
+      announcedStepRef.current = new Set([0]);
+      onRouteReplacedRef.current?.(updated);
+      if (settingsRef.current.turnByTurnVoice) {
+        audioService.speak(
+          `Route herberekend. ${updated.steps[0]?.instruction || ''}`,
+          'navigation',
+          settingsRef.current.speechRate
+        );
+      }
+    } catch (err) {
+      console.warn('Reroute failed:', err);
+    } finally {
+      reroutingLockRef.current = false;
+      setIsRerouting(false);
+    }
+  }, [navState?.isActive, navState?.currentPosition]);
+
+  // Automatic reroute when user stays >65m off-route in live GPS mode (with 25s cooldown)
+  useEffect(() => {
+    if (
+      !navState?.isActive ||
+      navState.isSimulating ||
+      navState.hasArrived ||
+      navState.offRouteMeters <= 65 ||
+      reroutingLockRef.current ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+    if (Date.now() - lastRerouteAtRef.current < 25000) return;
+
+    const timer = window.setTimeout(() => {
+      triggerReroute();
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [
+    navState?.isActive,
+    navState?.isSimulating,
+    navState?.hasArrived,
+    navState?.offRouteMeters,
+    triggerReroute,
+  ]);
+
+  const getElapsedSeconds = useCallback(() => {
+    return Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
   }, []);
 
   // Active GPS watcher or Simulation timer loop
@@ -268,10 +347,13 @@ export function useNavigation({ route, settings }: UseNavigationProps) {
 
   return {
     navState,
+    isRerouting,
     startNavigation,
     stopNavigation,
     dismissPoiPopup,
     openPoiPopup,
     setSimulationSpeed,
+    triggerReroute,
+    getElapsedSeconds,
   };
 }

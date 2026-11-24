@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react';
-import { Bell, Bookmark, CheckCircle2, CloudDownload, Smartphone, Trash2, Volume2, X } from 'lucide-react';
+import {
+  Award,
+  Bell,
+  Bookmark,
+  CheckCircle2,
+  CloudDownload,
+  Smartphone,
+  Trash2,
+  Volume2,
+  X,
+} from 'lucide-react';
 import { audioService } from '../services/audioService';
-import type { AppSettings, GeneratedRoute, SavedRoute } from '../types';
+import type { AppSettings, CompletedTrip, GeneratedRoute, SavedRoute } from '../types';
 import { formatDistance, formatDuration } from '../utils/geo';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
-  initialTab?: 'options' | 'saved';
+  initialTab?: 'options' | 'saved' | 'diary';
   onClose: () => void;
   settings: AppSettings;
   onUpdateSettings: (patch: Partial<AppSettings>) => void;
   savedRoutes: SavedRoute[];
+  completedTrips: CompletedTrip[];
   onLoadSavedRoute: (route: GeneratedRoute) => void;
   onDeleteSavedRoute: (id: string) => void;
   onDownloadOfflineRoute: (item: SavedRoute) => void;
+  onDeleteCompletedTrip: (id: string) => void;
 }
 
 export function SettingsDrawer({
@@ -23,11 +35,13 @@ export function SettingsDrawer({
   settings,
   onUpdateSettings,
   savedRoutes,
+  completedTrips,
   onLoadSavedRoute,
   onDeleteSavedRoute,
   onDownloadOfflineRoute,
+  onDeleteCompletedTrip,
 }: SettingsDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'options' | 'saved'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'options' | 'saved' | 'diary'>(initialTab);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,7 +68,7 @@ export function SettingsDrawer({
         </div>
 
         {/* Tabs */}
-        <div className="grid grid-cols-2 gap-1 p-2 bg-slate-100 mx-4 mt-3 rounded-2xl">
+        <div className="grid grid-cols-3 gap-1 p-1.5 bg-slate-100 mx-4 mt-3 rounded-2xl">
           <button
             type="button"
             onClick={() => setActiveTab('options')}
@@ -62,17 +76,27 @@ export function SettingsDrawer({
               activeTab === 'options' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
             }`}
           >
-            Navigatie &amp; Geluid
+            Opties
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('saved')}
-            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
               activeTab === 'saved' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
             }`}
           >
             <Bookmark className="w-3.5 h-3.5" />
-            Opgeslagen ({savedRoutes.length})
+            Trips ({savedRoutes.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('diary')}
+            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+              activeTab === 'diary' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            Dagboek ({completedTrips.length})
           </button>
         </div>
 
@@ -285,7 +309,7 @@ export function SettingsDrawer({
                 </div>
               </div>
             </>
-          ) : (
+          ) : activeTab === 'saved' ? (
             <div className="space-y-2.5">
               {savedRoutes.length === 0 ? (
                 <div className="text-center py-12 text-slate-500 text-sm px-4">
@@ -353,6 +377,51 @@ export function SettingsDrawer({
                       >
                         Open trip
                       </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {completedTrips.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 text-sm px-4">
+                  Nog geen voltooide tochten in je dagboek. Start een wandeling of fietstocht om je
+                  prestaties en ontdekte POIs vast te leggen!
+                </div>
+              ) : (
+                completedTrips.map((trip) => (
+                  <div
+                    key={trip.id}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-900 truncate">
+                          {trip.routeName}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {new Date(trip.completedAt).toLocaleDateString('nl-NL', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}{' '}
+                          · {formatDistance(trip.distanceMeters)} ·{' '}
+                          {formatDuration(trip.durationSeconds)} ·{' '}
+                          {trip.avgSpeedKmh.toFixed(1).replace('.', ',')} km/u
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteCompletedTrip(trip.id)}
+                        aria-label="Verwijder uit dagboek"
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="text-[11px] font-semibold text-emerald-700">
+                      ✓ {trip.discoveredPois.length}/{trip.totalPoisOnRoute} POIs ontdekt
                     </div>
                   </div>
                 ))

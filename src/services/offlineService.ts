@@ -1,8 +1,9 @@
-import type { GeneratedRoute, SavedRoute } from '../types';
+import type { CompletedTrip, GeneratedRoute, SavedRoute } from '../types';
 
 const DB_NAME = 'city_explorer_plus_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_ROUTES = 'saved_routes';
+const STORE_TRIPS = 'completed_trips';
 const OFFLINE_CACHE_NAME = 'cep-offline-media-v1';
 const MAP_TILES_CACHE_NAME = 'map-tiles-cache';
 const LEGACY_STORAGE_KEY = 'cep_saved_routes_v1';
@@ -14,6 +15,9 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_ROUTES)) {
         db.createObjectStore(STORE_ROUTES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TRIPS)) {
+        db.createObjectStore(STORE_TRIPS, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -84,6 +88,46 @@ export async function removeSavedRoute(id: string): Promise<SavedRoute[]> {
     tx.onerror = () => reject(tx.error);
   });
   return getAllSavedRoutes();
+}
+
+export async function getAllCompletedTrips(): Promise<CompletedTrip[]> {
+  try {
+    const db = await openDb();
+    return await new Promise<CompletedTrip[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_TRIPS, 'readonly');
+      const req = tx.objectStore(STORE_TRIPS).getAll();
+      req.onsuccess = () => {
+        const items = (req.result as CompletedTrip[]) || [];
+        items.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+        resolve(items);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function addCompletedTrip(trip: CompletedTrip): Promise<CompletedTrip[]> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_TRIPS, 'readwrite');
+    tx.objectStore(STORE_TRIPS).put(trip);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return getAllCompletedTrips();
+}
+
+export async function removeCompletedTrip(id: string): Promise<CompletedTrip[]> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_TRIPS, 'readwrite');
+    tx.objectStore(STORE_TRIPS).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return getAllCompletedTrips();
 }
 
 /** Convert lat/lng to Web Mercator slippy tile x/y at zoom z */
