@@ -451,104 +451,111 @@ export function App() {
 
       {/* Top Floating Brand & Controls (Hidden during active navigation) */}
       {!navState?.isActive && (
-        <div className="absolute inset-x-0 top-0 z-20 px-3 sm:px-4 pt-safe pointer-events-none space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="pointer-events-auto flex items-center gap-2 bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl shadow-lg border border-slate-200/80">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-700 flex items-center justify-center text-white shadow-xs">
-                <Compass className="w-4 h-4" />
+        <>
+          <div className="absolute inset-x-0 top-0 z-20 px-2.5 sm:px-4 pt-safe pointer-events-none space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="pointer-events-auto flex items-center gap-2 bg-white/95 backdrop-blur-md px-2.5 sm:px-3 py-2 rounded-2xl shadow-lg border border-slate-200/80 min-w-0">
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-700 flex items-center justify-center text-white shadow-xs shrink-0">
+                  <Compass className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black text-slate-900 leading-none truncate">
+                    CityExplorer<span className="text-teal-600">+</span>
+                  </div>
+                  <div className="hidden sm:block text-[10px] font-semibold text-slate-500 leading-tight">
+                    Fiets &amp; Wandel Lusroutes
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-black text-slate-900 leading-none">
-                  CityExplorer<span className="text-teal-600">+</span>
-                </div>
-                <div className="text-[10px] font-semibold text-slate-500 leading-tight">
-                  Fiets &amp; Wandel Lusroutes
-                </div>
+
+              <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDrawerState({ open: true, tab: 'saved' })}
+                  aria-label="Mijn opgeslagen trips"
+                  className="flex items-center gap-1 px-2.5 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-teal-50 text-slate-800 shadow-lg border border-slate-200/80 text-xs font-bold transition cursor-pointer"
+                >
+                  <Bookmark className="w-4 h-4 text-teal-600" />
+                  <span className="text-xs font-bold">Trips</span>
+                  {savedRoutes.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-teal-600 text-white text-[10px] leading-none">
+                      {savedRoutes.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDrawerState({ open: true, tab: 'options' })}
+                  aria-label="Open opties en dagboek"
+                  className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDrawerState({ open: true, tab: 'saved' })}
-                className="flex items-center gap-1 px-2.5 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-teal-50 text-slate-800 shadow-lg border border-slate-200/80 text-xs font-bold transition cursor-pointer"
-              >
-                <Bookmark className="w-4 h-4 text-teal-600" />
-                {savedRoutes.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-teal-600 text-white text-[10px] leading-none">
-                    {savedRoutes.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIs3D((prev) => !prev)}
-                aria-label="Wissel tussen 2D en 3D kaartweergave"
-                title={is3D ? 'Schakel naar 2D' : 'Kantel kaart naar 3D'}
-                className={`px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-extrabold transition cursor-pointer ${
-                  is3D
-                    ? 'bg-teal-600 text-white border-teal-500'
-                    : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
-                }`}
-              >
-                {is3D ? '3D' : '2D'}
-              </button>
-
-              <button
-                type="button"
-                onClick={cycleMapStyle}
-                aria-label="Wissel kaartstijl (Kaart, Nacht, Satelliet)"
-                title={`Huidige weergave: ${mapStyleLabel} (tik om te wisselen)`}
-                className={`flex items-center gap-1 px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-bold transition cursor-pointer ${
-                  mapStyle !== 'standard'
-                    ? 'bg-slate-900 text-white border-slate-700'
-                    : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
-                }`}
-              >
-                {mapStyle === 'dark' ? (
-                  <Moon className="w-4 h-4 text-amber-300" />
-                ) : mapStyle === 'satellite' ? (
-                  <Layers className="w-4 h-4 text-teal-300" />
-                ) : (
-                  <Sun className="w-4 h-4 text-teal-600" />
-                )}
-                <span className="hidden sm:inline">{mapStyleLabel}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (gpsStatus !== 'ready') {
-                    requestGps();
-                  } else {
-                    setRecenterSignal((n) => n + 1);
-                  }
-                }}
-                aria-label="Centreer op locatie"
-                className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
-              >
-                <Crosshair className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDrawerState({ open: true, tab: 'options' })}
-                aria-label="Open opties en dagboek"
-                className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            </div>
+            {isOffline && (
+              <div className="pointer-events-auto inline-flex items-center gap-1.5 bg-slate-900/90 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
+                <WifiOff className="w-3.5 h-3.5" />
+                Offline modus · Opgeslagen trips &amp; GPS actief
+              </div>
+            )}
           </div>
 
-          {isOffline && (
-            <div className="pointer-events-auto inline-flex items-center gap-1.5 bg-slate-900/90 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
-              <WifiOff className="w-3.5 h-3.5" />
-              Offline modus · Opgeslagen trips &amp; GPS actief
-            </div>
-          )}
-        </div>
+          {/* Vertical Map Controls Rail (right side, Google Maps style — always fits on any phone) */}
+          <div className="fixed right-2.5 sm:right-4 top-20 z-20 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setIs3D((prev) => !prev)}
+              aria-label="Wissel tussen 2D en 3D kaartweergave"
+              title={is3D ? 'Schakel naar 2D' : 'Kantel kaart naar 3D'}
+              className={`w-10 h-10 flex items-center justify-center rounded-2xl backdrop-blur-md shadow-lg border text-xs font-extrabold transition cursor-pointer ${
+                is3D
+                  ? 'bg-teal-600 text-white border-teal-500'
+                  : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
+              }`}
+            >
+              {is3D ? '3D' : '2D'}
+            </button>
+
+            <button
+              type="button"
+              onClick={cycleMapStyle}
+              aria-label="Wissel kaartstijl (Kaart, Nacht, Satelliet)"
+              title={`Kaartstijl: ${mapStyleLabel}`}
+              className={`w-10 h-10 flex items-center justify-center rounded-2xl backdrop-blur-md shadow-lg border transition cursor-pointer ${
+                mapStyle !== 'standard'
+                  ? 'bg-slate-900 text-white border-slate-700'
+                  : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
+              }`}
+            >
+              {mapStyle === 'dark' ? (
+                <Moon className="w-4 h-4 text-amber-300" />
+              ) : mapStyle === 'satellite' ? (
+                <Layers className="w-4 h-4 text-teal-300" />
+              ) : (
+                <Sun className="w-4 h-4 text-teal-600" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (gpsStatus !== 'ready') {
+                  requestGps();
+                } else {
+                  setRecenterSignal((n) => n + 1);
+                }
+              }}
+              aria-label="Centreer op locatie"
+              title="Centreer op huidige locatie"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
+            >
+              <Crosshair className="w-4 h-4" />
+            </button>
+          </div>
+        </>
       )}
 
       {/* Mode 1: Route Planner Sheet */}
