@@ -8,6 +8,8 @@ interface MapViewProps {
   route: GeneratedRoute | null;
   navState: NavigationStatus | null;
   mapStyle: 'standard' | 'satellite';
+  is3D: boolean;
+  onPitchChange?: (tilted: boolean) => void;
   onSelectPoi: (poi: POI) => void;
   onMapClickStart?: (pos: LatLng) => void;
   recenterSignal: number;
@@ -26,6 +28,8 @@ export function MapView({
   route,
   navState,
   mapStyle,
+  is3D,
+  onPitchChange,
   onSelectPoi,
   onMapClickStart,
   recenterSignal,
@@ -42,10 +46,13 @@ export function MapView({
   const onMapClickStartRef = useRef(onMapClickStart);
   onMapClickStartRef.current = onMapClickStart;
 
+  const onPitchChangeRef = useRef(onPitchChange);
+  onPitchChangeRef.current = onPitchChange;
+
   const isNavigatingRef = useRef(false);
   isNavigatingRef.current = Boolean(navState?.isActive);
 
-  // Initialize MapLibre GL map once
+  // Initialize MapLibre GL map once with Google Maps-style touch pitch & 3D tilt support
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -56,7 +63,18 @@ export function MapView({
       zoom: 14,
       pitch: 0,
       bearing: 0,
+      maxPitch: 65,
+      touchPitch: true,
+      pitchWithRotate: true,
+      dragRotate: true,
       attributionControl: { compact: true },
+    });
+
+    // Sync 2D/3D toggle when user manually tilts via two-finger swipe or right-click/Ctrl drag
+    map.on('pitchend', () => {
+      if (!isNavigatingRef.current && onPitchChangeRef.current) {
+        onPitchChangeRef.current(map.getPitch() > 15);
+      }
     });
 
     map.on('load', () => {
@@ -323,7 +341,21 @@ export function MapView({
     }
   }, [route, navState?.isActive, triggeredPoisKey]);
 
-  // Smooth heading-up camera follow during active navigation
+  // Smoothly tilt map between 2D (0°) and Google Maps-style 3D perspective (58°)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || navState?.isActive) return;
+    const targetPitch = is3D ? 55 : 0;
+    if (Math.abs(map.getPitch() - targetPitch) > 5) {
+      map.easeTo({
+        pitch: targetPitch,
+        bearing: is3D ? map.getBearing() : 0,
+        duration: 450,
+      });
+    }
+  }, [is3D, navState?.isActive]);
+
+  // Smooth Google Maps-style heading-up & forward-looking 3D camera during active navigation
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !navState?.isActive) return;
@@ -331,20 +363,26 @@ export function MapView({
     map.easeTo({
       center: [navState.currentPosition.lng, navState.currentPosition.lat],
       bearing: navState.heading,
-      pitch: 48,
-      zoom: 16.5,
+      pitch: is3D ? 58 : 0,
+      zoom: is3D ? 17 : 16,
+      padding: is3D
+        ? { top: 220, bottom: 50, left: 0, right: 0 }
+        : { top: 100, bottom: 100, left: 0, right: 0 },
       duration: 380,
     });
-  }, [navState?.isActive, navState?.currentPosition, navState?.heading]);
+  }, [navState?.isActive, navState?.currentPosition, navState?.heading, is3D]);
 
-  // Reset pitch/bearing when exiting navigation
+  // Reset padding/bearing when exiting navigation
   useEffect(() => {
     const map = mapRef.current;
     if (!map || navState?.isActive) return;
-    if (map.getPitch() > 0 || map.getBearing() !== 0) {
-      map.easeTo({ pitch: 0, bearing: 0, duration: 500 });
-    }
-  }, [navState?.isActive]);
+    map.easeTo({
+      pitch: is3D ? 55 : 0,
+      bearing: 0,
+      padding: { top: 0, bottom: 0, left: 0, right: 0 },
+      duration: 500,
+    });
+  }, [navState?.isActive, is3D]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }

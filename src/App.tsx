@@ -54,6 +54,7 @@ export function App() {
 
   // Route & UI state
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+  const [is3D, setIs3D] = useState<boolean>(false);
   const [route, setRoute] = useState<GeneratedRoute | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressText, setProgressText] = useState('');
@@ -263,6 +264,8 @@ export function App() {
         route={route}
         navState={navState}
         mapStyle={mapStyle}
+        is3D={is3D}
+        onPitchChange={setIs3D}
         onSelectPoi={handleSelectPoi}
         onMapClickStart={!route && !navState?.isActive ? handlePickManualStart : undefined}
         recenterSignal={recenterSignal}
@@ -300,6 +303,20 @@ export function App() {
                     {savedRoutes.length}
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIs3D((prev) => !prev)}
+                aria-label="Wissel tussen 2D en 3D kaartweergave"
+                title={is3D ? 'Schakel naar 2D bovenaanzicht' : 'Kantel kaart naar 3D (zoals Google Maps)'}
+                className={`px-2.5 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border text-xs font-extrabold transition cursor-pointer ${
+                  is3D
+                    ? 'bg-teal-600 text-white border-teal-500'
+                    : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200/80'
+                }`}
+              >
+                {is3D ? '3D' : '2D'}
               </button>
 
               <button
@@ -398,8 +415,14 @@ export function App() {
             setInspectedPoi(null);
           }}
           onAlternativeLoop={() => runRouteGeneration((route.sectorIndex + 1) % 4)}
-          onStartNavigation={() => startNavigation(false)}
-          onStartSimulation={() => startNavigation(true)}
+          onStartNavigation={() => {
+            setIs3D(true);
+            startNavigation(false);
+          }}
+          onStartSimulation={() => {
+            setIs3D(true);
+            startNavigation(true);
+          }}
           onSaveOffline={() => handleSaveOffline()}
           onExportGpx={handleExportGpx}
           onSelectPoi={handleSelectPoi}
@@ -409,28 +432,46 @@ export function App() {
       {/* Mode 3: Active Turn-by-Turn Navigation Overlay */}
       {route && navState?.isActive && (
         <>
-          <button
-            type="button"
-            onClick={() =>
-              setMapStyle((prev) => (prev === 'standard' ? 'satellite' : 'standard'))
-            }
-            aria-label="Wissel tussen kaart en satelliet"
-            title={mapStyle === 'satellite' ? 'Toon gewone kaart' : 'Toon satellietbeeld'}
-            className={`fixed right-3 top-1/2 -translate-y-1/2 z-20 p-3 rounded-2xl shadow-xl border backdrop-blur-md transition cursor-pointer ${
-              mapStyle === 'satellite'
-                ? 'bg-teal-600 text-white border-teal-400'
-                : 'bg-slate-900/90 text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <Layers className="w-5 h-5" />
-          </button>
+          <div className="fixed right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setIs3D((prev) => !prev)}
+              aria-label="Wissel tussen 2D en 3D navigatie"
+              title={is3D ? 'Schakel naar 2D bovenaanzicht' : 'Schakel naar 3D navigatie'}
+              className={`w-11 h-11 rounded-2xl shadow-xl border backdrop-blur-md text-xs font-black transition cursor-pointer ${
+                is3D
+                  ? 'bg-teal-600 text-white border-teal-400'
+                  : 'bg-slate-900/90 text-white border-slate-700 hover:bg-slate-800'
+              }`}
+            >
+              {is3D ? '3D' : '2D'}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setMapStyle((prev) => (prev === 'standard' ? 'satellite' : 'standard'))
+              }
+              aria-label="Wissel tussen kaart en satelliet"
+              title={mapStyle === 'satellite' ? 'Toon gewone kaart' : 'Toon satellietbeeld'}
+              className={`w-11 h-11 flex items-center justify-center rounded-2xl shadow-xl border backdrop-blur-md transition cursor-pointer ${
+                mapStyle === 'satellite'
+                  ? 'bg-teal-600 text-white border-teal-400'
+                  : 'bg-slate-900/90 text-white border-slate-700 hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-5 h-5" />
+            </button>
+          </div>
           <NavigationOverlay
             route={route}
             navState={navState}
             settings={settings}
             onUpdateSettings={handleUpdateSettings}
             onOpenSettings={() => setDrawerState({ open: true, tab: 'options' })}
-            onStop={stopNavigation}
+            onStop={() => {
+              setIs3D(false);
+              stopNavigation();
+            }}
             onSetSimSpeed={setSimulationSpeed}
           />
         </>
