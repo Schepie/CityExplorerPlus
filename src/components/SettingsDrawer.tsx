@@ -434,7 +434,10 @@ export function SettingsDrawer({
                       <div className="text-sm font-extrabold text-slate-900">
                         CityExplorer+ <span className="text-teal-600">v{APP_VERSION}</span>
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-[11px] font-semibold text-slate-600">
+                        Ontwikkeld door Geert Schepers
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
                         {updateInfo?.status === 'update-available'
                           ? `Nieuwe versie v${updateInfo.latestVersion} beschikbaar!`
                           : updateInfo?.status === 'up-to-date'

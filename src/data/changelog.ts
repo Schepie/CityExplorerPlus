@@ -5,9 +5,17 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.3.1';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.3.1',
+    date: '24 nov 2026',
+    title: 'App-informatie & stemkeuze',
+    items: [
+      'Ontwikkelaarsvermelding (Geert Schepers) toegevoegd in het optiemenu en de app-metadata.',
+    ],
+  },
   {
     version: '1.3.0',
     date: '24 nov 2026',
