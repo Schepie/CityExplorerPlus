@@ -217,9 +217,39 @@ async function fetchOverpassPois(
   return pois;
 }
 
+/** Title patterns for mundane infrastructure (roads, highway bridges, stations, schools) that are NOT scenic POIs */
+const NON_POI_TITLE_PATTERN =
+  /^(lijst van|list of |metrostation|station |spoorwegstation|tramhalte|busstation|spoorlijn|spoorbrug|gemeente |arrondissement|gewestweg|rijksweg|provinciale weg|autosnelweg|snelweg|ringweg|ring van |grote ring|kleine ring|knooppunt |verkeerswisselaar|viaduct |brug bij |brug over |fietsbrug|voetgangersbrug|verkeersbrug|afrit |oprit |tunnel |bedrijventerrein|industrieterrein|ziekenhuis|campus |hogeschool|universiteit|basisschool|middelbare school)|\b(N\d{1,3}|R\d{1,2}|A\d{1,3}|E\d{2,3})\b|\((ring|N\d+|R\d+|A\d+|E\d+|brug|weg|station|metro|tram)\)|(highway|motorway|interchange|junction|metro station|railway station|train station|ring road)/i;
+
+/** Description patterns indicating mundane road/bridge infrastructure with no historical value */
+const INFRA_DESC_PATTERN =
+  /\b(gewestweg|rijksweg|provinciale weg|autosnelweg|snelweg|ringweg|grote ring|kleine ring|verkeerswisselaar|knooppunt|liggerbrug|plaatbrug|balkbrug|viaduct|spoorbrug|spoorlijn|spoorweg|verkeersbrug|weg in belgië|weg in nederland|nationale weg|motorway|expressway|ring road|highway bridge|railway bridge)\b/i;
+
+/** Positive historical / heritage signals that allow a truly historic bridge or ancient road */
+const HISTORIC_VALUE_PATTERN =
+  /\b(historisch|monument|erfgoed|beschermd|middeleeuw|romeins|oudste|eeuwse|1[0-8]e eeuw|1[0-8]\d{2}|unesco|werelderfgoed|historic|heritage|medieval|ancient|roman|listed building|monumental)\b/i;
+
+export function isNonScenicInfrastructurePoi(poi: POI): boolean {
+  if (poi.isCustomStop) return false;
+  // OSM POIs explicitly tagged as historic or heritage are always kept
+  if (poi.tags?.historic || poi.tags?.heritage) return false;
+
+  // Check title first
+  if (NON_POI_TITLE_PATTERN.test(poi.name)) {
+    return !HISTORIC_VALUE_PATTERN.test(poi.description);
+  }
+
+  // Check description for mundane roads/bridges without historical value
+  if (INFRA_DESC_PATTERN.test(poi.description) && !HISTORIC_VALUE_PATTERN.test(poi.description)) {
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Fast, rock-solid Wikipedia GeoSearch (NL + EN in parallel, up to 50 POIs each, 0 tokens, never rate-limited!).
- * Filters out non-POI articles like metro stations, streets, or districts when better landmarks exist.
+ * Filters out mundane infrastructure like highway bridges, ring roads, metro stations, and schools.
  */
 async function fetchWikipediaGeoPois(
   center: LatLng,
@@ -228,9 +258,6 @@ async function fetchWikipediaGeoPois(
 ): Promise<POI[]> {
   const r = Math.min(10000, Math.max(500, Math.round(radiusMeters)));
   const langs: Array<'nl' | 'en'> = ['nl', 'en'];
-
-  const skipPattern =
-    /^(lijst van|metrostation|station |tramhalte|busstation|spoorlijn|gemeente |arrondissement|list of |.*metro station)/i;
 
   const results = await Promise.all(
     langs.map(async (lang) => {
@@ -246,7 +273,7 @@ async function fetchWikipediaGeoPois(
           json?.query?.geosearch || [];
 
         return list
-          .filter((item) => !skipPattern.test(item.title))
+          .filter((item) => !NON_POI_TITLE_PATTERN.test(item.title))
           .map((item) => ({
             id: `wiki-${lang}-${item.pageid}`,
             name: item.title,
@@ -350,7 +377,8 @@ export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
   if (cacheDirty) {
     saveWikiCache(cache);
   }
-  return enriched;
+  // Drop any Wikipedia POI whose fetched summary reveals it is a non-historic road or highway bridge
+  return enriched.filter((poi) => !isNonScenicInfrastructurePoi(poi));
 }
 
 async function fetchWikipediaSummary(

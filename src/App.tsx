@@ -227,6 +227,7 @@ export function App() {
   const handlePickManualStart = useCallback(async (pos: LatLng) => {
     setStartLocation(pos);
     setGpsStatus('manual');
+    setSelectedCityName(undefined);
     setLocationLabel(`Vertrekpunt (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)})`);
     const rev = await reverseGeocode(pos);
     setLocationLabel(rev.label);
