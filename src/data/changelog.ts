@@ -5,9 +5,18 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.3.0',
+    date: '24 nov 2026',
+    title: 'Stemkeuze: Vlaams / Nederlands & Vrouw / Man',
+    items: [
+      'Kies zelf tussen Vlaams (BE) of Nederlands (NL) voor turn-by-turn navigatie en POI-uitleg.',
+      'Kies tussen vrouwelijke of mannelijke stem, of selecteer direct een specifieke stem van je toestel.',
+    ],
+  },
   {
     version: '1.2.0',
     date: '24 nov 2026',

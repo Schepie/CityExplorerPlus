@@ -54,6 +54,17 @@ export function SettingsDrawer({
 }: SettingsDrawerProps) {
   const [activeTab, setActiveTab] = useState<'options' | 'saved' | 'diary'>(initialTab);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [dutchVoices, setDutchVoices] = useState<SpeechSynthesisVoice[]>(() =>
+    audioService.getDutchVoices()
+  );
+
+  useEffect(() => {
+    const unsub = audioService.onVoicesChange(() => {
+      setDutchVoices(audioService.getDutchVoices());
+    });
+    setDutchVoices(audioService.getDutchVoices());
+    return unsub;
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -189,6 +200,97 @@ export function SettingsDrawer({
                     <Volume2 className="w-3.5 h-3.5" />
                     Test voorlezen
                   </button>
+                </div>
+
+                {/* Voice accent (Vlaams / Nederlands) & gender (Vrouw / Man) */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-slate-700">Taal / Accent</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateSettings({ voiceRegion: 'nl-BE', preferredVoiceURI: '' })
+                        }
+                        className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          settings.voiceRegion === 'nl-BE'
+                            ? 'bg-teal-600 text-white border-teal-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-teal-400'
+                        }`}
+                      >
+                        🇧🇪 Vlaams
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateSettings({ voiceRegion: 'nl-NL', preferredVoiceURI: '' })
+                        }
+                        className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          settings.voiceRegion === 'nl-NL'
+                            ? 'bg-teal-600 text-white border-teal-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-teal-400'
+                        }`}
+                      >
+                        🇳🇱 Nederlands
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-slate-700">Stemtype</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'auto', label: 'Auto' },
+                          { id: 'female', label: '👩 Vrouw' },
+                          { id: 'male', label: '👨 Man' },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            onUpdateSettings({ voiceGender: opt.id, preferredVoiceURI: '' })
+                          }
+                          className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            settings.voiceGender === opt.id
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-teal-400'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {dutchVoices.length > 0 && (
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-600">
+                        Specifieke stem op dit toestel (optioneel)
+                      </label>
+                      <select
+                        value={settings.preferredVoiceURI}
+                        onChange={(e) => onUpdateSettings({ preferredVoiceURI: e.target.value })}
+                        className="w-full text-xs px-2.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-teal-600"
+                      >
+                        <option value="">
+                          Automatisch ({settings.voiceRegion === 'nl-BE' ? 'Vlaams' : 'Nederlands'}
+                          {settings.voiceGender === 'female'
+                            ? ' · Vrouw'
+                            : settings.voiceGender === 'male'
+                              ? ' · Man'
+                              : ''}
+                          )
+                        </option>
+                        {dutchVoices.map((v) => (
+                          <option key={v.voiceURI} value={v.voiceURI}>
+                            {v.name} ({v.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Speech rate */}

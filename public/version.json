@@ -1,11 +1,8 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "releasedAt": "2026-11-24",
   "highlights": [
-    "App-versie, live update-controle en overzicht met nieuwigheden toegevoegd",
-    "Mobiele iconenbalk vernieuwd zodat alle knoppen op elke GSM zichtbaar blijven",
-    "Niet-historische gewestwegen en verkeersbruggen worden automatisch uit POIs gefilterd",
-    "Startmenu & route-overzicht inklapbaar om op GSM makkelijk je vertrekpunt te kiezen",
-    "Hoogteprofiel, weer/wind-badge, auto-reroute, pitstops, QR-delen, dagboek, nachtmodus en meertalig voorlezen"
+    "Keuze uit Vlaams of Nederlands accent voor navigatie en voorlezen",
+    "Keuze uit vrouwelijke of mannelijke voorleesstem (+ specifieke stemmen op je toestel)"
   ]
 }

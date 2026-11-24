@@ -139,11 +139,17 @@ export interface GeneratedRoute {
   routingProvider: 'openrouteservice' | 'osrm';
 }
 
+export type VoiceRegion = 'nl-BE' | 'nl-NL';
+export type VoiceGender = 'auto' | 'female' | 'male';
+
 export interface AppSettings {
   turnByTurnVoice: boolean;
   poiSoundEnabled: boolean;
   poiAutoReadAloud: boolean;
   speechRate: number; // 0.8 - 1.3
+  voiceRegion: VoiceRegion;
+  voiceGender: VoiceGender;
+  preferredVoiceURI: string;
   walkingSpeedKmh: number; // default 4.8
   cyclingSpeedKmh: number; // default 18
   poiTriggerRadiusMeters: number; // default 60

@@ -10,6 +10,7 @@ import { ShareRouteModal } from './components/ShareRouteModal';
 import { TripSummaryModal } from './components/TripSummaryModal';
 import { APP_VERSION } from './data/changelog';
 import { useNavigation } from './hooks/useNavigation';
+import { audioService } from './services/audioService';
 import { reverseGeocode } from './services/geocodingService';
 import {
   addCompletedTrip,
@@ -107,6 +108,15 @@ export function App() {
       setCheckingUpdate(false);
     }
   }, []);
+
+  // Sync user's selected voice region (Vlaams / Nederlands), gender & device voice into audioService
+  useEffect(() => {
+    audioService.configureVoice({
+      voiceRegion: settings.voiceRegion,
+      voiceGender: settings.voiceGender,
+      preferredVoiceURI: settings.preferredVoiceURI,
+    });
+  }, [settings.voiceRegion, settings.voiceGender, settings.preferredVoiceURI]);
 
   // Automatically check for app updates on startup
   useEffect(() => {
