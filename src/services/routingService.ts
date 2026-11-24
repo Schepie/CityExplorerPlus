@@ -9,6 +9,7 @@ import type {
   TurnStep,
 } from '../types';
 import {
+  bearingDegrees,
   computeCumulativeDistances,
   destinationPoint,
   haversineMeters,
@@ -59,8 +60,9 @@ function buildCalibratedLoopWaypoints(
           { angleOffset: 44, radiusFactor: 0.56 },
         ];
 
-  const snapRadius = Math.max(220, Math.min(loopRadiusMeters * 0.42, 1600));
-  const minPoiSpacing = Math.max(180, loopRadiusMeters * 0.25);
+  // Generous snap radius so anchors aggressively prioritize real POIs!
+  const snapRadius = Math.max(480, Math.min(loopRadiusMeters * 0.68, 2200));
+  const minPoiSpacing = Math.max(150, Math.min(loopRadiusMeters * 0.22, 650));
 
   const usedPoiIds = new Set<string>();
   const selectedPois: POI[] = [];
@@ -79,20 +81,19 @@ function buildCalibratedLoopWaypoints(
       const distToAnchor = haversineMeters(anchor, { lat: poi.lat, lng: poi.lng });
       if (distToAnchor > snapRadius) continue;
 
-      // Avoid snapping two anchors onto nearly the same spot
       const tooCloseToPicked = selectedPois.some(
         (p) => haversineMeters({ lat: p.lat, lng: p.lng }, { lat: poi.lat, lng: poi.lng }) < minPoiSpacing
       );
       if (tooCloseToPicked) continue;
 
-      // Also avoid snapping back right onto the start point
-      if (haversineMeters(start, { lat: poi.lat, lng: poi.lng }) < Math.max(140, loopRadiusMeters * 0.18)) {
+      // Skip POIs directly on top of the start point (< 90m)
+      if (haversineMeters(start, { lat: poi.lat, lng: poi.lng }) < 90) {
         continue;
       }
 
-      // Balance POI quality with proximity to the geometric anchor so loop length stays accurate
-      const proximityBonus = (1 - distToAnchor / snapRadius) * 45;
-      const combined = poi.score * 0.65 + proximityBonus;
+      // Strongly prioritize high-quality POIs while respecting loop shape
+      const proximityBonus = (1 - distToAnchor / snapRadius) * 40;
+      const combined = poi.score * 0.85 + proximityBonus;
 
       if (combined > bestCombinedScore) {
         bestCombinedScore = combined;
@@ -105,8 +106,44 @@ function buildCalibratedLoopWaypoints(
       selectedPois.push(bestPoi);
       innerWaypoints.push({ lat: bestPoi.lat, lng: bestPoi.lng });
     } else {
-      // Keep the geometric shaping point so the loop STILL reaches the target distance!
       innerWaypoints.push(anchor);
+    }
+  }
+
+  // POI-First Guarantee: if fewer than 3 POIs snapped to anchors, insert top nearby POIs in the loop band
+  if (selectedPois.length < 3 && allPois.length > 0) {
+    const candidates = allPois
+      .filter((poi) => {
+        if (usedPoiIds.has(poi.id)) return false;
+        const d = haversineMeters(start, { lat: poi.lat, lng: poi.lng });
+        return d >= 100 && d <= loopRadiusMeters * 1.25;
+      })
+      .sort((a, b) => b.score - a.score);
+
+    for (const poi of candidates) {
+      if (selectedPois.length >= 4) break;
+      const tooClose = selectedPois.some(
+        (p) => haversineMeters({ lat: p.lat, lng: p.lng }, { lat: poi.lat, lng: poi.lng }) < 140
+      );
+      if (tooClose) continue;
+      usedPoiIds.add(poi.id);
+      selectedPois.push(poi);
+      innerWaypoints.push({ lat: poi.lat, lng: poi.lng });
+    }
+
+    // Re-order all inner waypoints clockwise around centroid so the loop stays smooth
+    if (innerWaypoints.length > 2) {
+      const allPts = [start, ...innerWaypoints];
+      const centroid: LatLng = {
+        lat: allPts.reduce((s, p) => s + p.lat, 0) / allPts.length,
+        lng: allPts.reduce((s, p) => s + p.lng, 0) / allPts.length,
+      };
+      const startAngle = bearingDegrees(centroid, start);
+      innerWaypoints.sort((a, b) => {
+        const angA = (bearingDegrees(centroid, a) - startAngle + 360) % 360;
+        const angB = (bearingDegrees(centroid, b) - startAngle + 360) % 360;
+        return angA - angB;
+      });
     }
   }
 
@@ -397,16 +434,32 @@ export async function generateLoopRoute(params: {
     selectedInterests.length > 0 ? selectedInterests : [DEFAULT_INTEREST];
 
   const targetMeters = targetDistanceKm * 1000;
-  const sectorCenterDeg = (sectorIndex * 90 + 35) % 360;
 
   // Initial teardrop loop radius: street perimeter ≈ 3.35 * R
   let loopRadius = Math.max(320, targetMeters / 3.35);
 
-  onProgress?.('Interessante plekken (POIs) zoeken langs de beoogde lus...');
-  // Center the POI search around the midpoint of the loop so outer POIs are found too!
-  const searchCenter = destinationPoint(start, sectorCenterDeg, loopRadius * 0.55);
-  const searchRadius = Math.max(1000, Math.round(loopRadius * 0.95));
-  const allPois = await fetchPoisAround(searchCenter, searchRadius, effectiveInterests);
+  onProgress?.('Interessante plekken (POIs) zoeken rond jouw startpunt...');
+  // Search a full circle around start so we can pick the POI-richest direction!
+  const searchRadius = Math.max(1200, Math.min(10000, Math.round(loopRadius * 1.25)));
+  const allPois = await fetchPoisAround(start, searchRadius, effectiveInterests);
+
+  // Rank the 4 compass sectors by total POI score so the loop naturally heads toward the best POIs!
+  const candidateSectors = [35, 125, 215, 305];
+  const angleDiff = (a: number, b: number) => {
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+  };
+  const rankedSectors = [...candidateSectors].sort((degA, degB) => {
+    const scoreFor = (deg: number) =>
+      allPois.reduce((sum, p) => {
+        const d = haversineMeters(start, { lat: p.lat, lng: p.lng });
+        if (d < 90 || d > loopRadius * 1.3) return sum;
+        const brng = bearingDegrees(start, { lat: p.lat, lng: p.lng });
+        return angleDiff(brng, deg) <= 60 ? sum + p.score : sum;
+      }, 0);
+    return scoreFor(degB) - scoreFor(degA);
+  });
+  const sectorCenterDeg = rankedSectors[sectorIndex % rankedSectors.length];
 
   const computeRoute = async (wps: LatLng[]): Promise<RoutingResult> => {
     if (orsApiKey && orsApiKey.trim().length > 10) {
@@ -473,13 +526,13 @@ export async function generateLoopRoute(params: {
 
   const cumulativeDistances = computeCumulativeDistances(bestRouting.coordinates);
 
-  // Also include bonus POIs that lie within 95m of the calibrated route!
+  // Also include bonus POIs that lie within 130m of the calibrated route!
   const selectedIds = new Set(bestSelectedPois.map((p) => p.id));
   const bonusPois: POI[] = [];
   for (const poi of allPois) {
     if (selectedIds.has(poi.id) || bestSelectedPois.length + bonusPois.length >= 12) continue;
     const proj = projectOntoRoute({ lat: poi.lat, lng: poi.lng }, bestRouting.coordinates, cumulativeDistances);
-    if (proj.offRouteMeters <= 95) {
+    if (proj.offRouteMeters <= 130) {
       bonusPois.push({ ...poi, routeDistanceMeters: proj.distanceAlongMeters });
       selectedIds.add(poi.id);
     }
