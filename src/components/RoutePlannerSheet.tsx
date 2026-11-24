@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Bike,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Compass,
   Crosshair,
@@ -72,6 +74,7 @@ export function RoutePlannerSheet({
   const [searchResults, setSearchResults] = useState<SearchPlace[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -109,13 +112,61 @@ export function RoutePlannerSheet({
 
   return (
     <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center pointer-events-none px-2 sm:px-4 pb-2 sm:pb-4">
-      <div className="pointer-events-auto w-full max-w-lg bg-white/96 backdrop-blur-md rounded-3xl shadow-2xl border border-slate-200/80 overflow-visible pb-safe">
-        {/* Drag handle */}
-        <div className="flex justify-center pt-2.5 pb-1">
-          <div className="w-10 h-1.5 rounded-full bg-slate-300" />
-        </div>
+      <div className="pointer-events-auto w-full max-w-lg bg-white/96 backdrop-blur-md rounded-3xl shadow-2xl border border-slate-200/80 overflow-visible pb-safe transition-all duration-200">
+        {/* Clickable Collapse / Expand Header Bar */}
+        <button
+          type="button"
+          onClick={() => setIsCollapsed((c) => !c)}
+          aria-label={isCollapsed ? 'Klap routeplanner open' : 'Klap routeplanner dicht om kaart te zien'}
+          className="w-full flex flex-col items-center pt-2 pb-1.5 px-4 cursor-pointer group"
+        >
+          <div className="w-10 h-1.5 rounded-full bg-slate-300 group-hover:bg-teal-500 transition" />
+          <div className="w-full flex items-center justify-between mt-1">
+            <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1 truncate">
+              {isCollapsed ? (
+                <>
+                  <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                  <span className="truncate text-slate-800">{locationLabel}</span>
+                </>
+              ) : (
+                'Klap dicht om vertrekpunt op kaart aan te duiden'
+              )}
+            </span>
+            <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-teal-700 shrink-0 ml-2">
+              {isCollapsed ? (
+                <>
+                  Openen <ChevronUp className="w-4 h-4" />
+                </>
+              ) : (
+                <>
+                  Kaart <ChevronDown className="w-4 h-4" />
+                </>
+              )}
+            </span>
+          </div>
+        </button>
 
-        <div className="px-4 pb-4 space-y-3 max-h-[72vh] overflow-y-auto no-scrollbar">
+        {isCollapsed ? (
+          <div className="px-4 pb-3 pt-0.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-500 leading-tight">
+              Tik op de kaart of sleep de groene pin voor jouw startpunt.
+            </span>
+            <button
+              type="button"
+              disabled={isGenerating || isOffline}
+              onClick={onGenerate}
+              className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 text-white text-xs font-bold shadow-md disabled:opacity-60 cursor-pointer"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Compass className="w-3.5 h-3.5" />
+              )}
+              <span>Stippel uit</span>
+            </button>
+          </div>
+        ) : (
+        <div className="px-4 pb-4 space-y-3 max-h-[68vh] overflow-y-auto no-scrollbar">
           {/* City / Starting Point Search Box */}
           <div className="relative space-y-1">
             <div className="flex items-center gap-1.5 bg-slate-100/95 border border-slate-200/90 focus-within:border-teal-500 focus-within:bg-white rounded-2xl px-2.5 py-1.5 transition">
@@ -169,9 +220,13 @@ export function RoutePlannerSheet({
                 <MapPin className="w-3 h-3 text-teal-600 shrink-0" />
                 <span className="truncate">{locationLabel}</span>
               </span>
-              <span className="shrink-0 ml-2 text-[10px] text-slate-400">
-                Of tik/sleep pin op kaart
-              </span>
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(true)}
+                className="shrink-0 ml-2 text-[11px] font-bold text-teal-700 hover:underline cursor-pointer"
+              >
+                Kies op kaart
+              </button>
             </div>
 
             {/* Search Autocomplete Results */}
@@ -371,6 +426,7 @@ export function RoutePlannerSheet({
             )}
           </button>
         </div>
+        )}
       </div>
     </div>
   );

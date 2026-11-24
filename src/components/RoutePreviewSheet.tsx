@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CloudDownload,
   Download,
   Loader2,
@@ -58,6 +60,7 @@ export function RoutePreviewSheet({
   onAddCustomStop,
 }: RoutePreviewSheetProps) {
   const isOfflineReady = Boolean(savedEntry?.isOfflineReady);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [addingStop, setAddingStop] = useState(false);
   const [stopQuery, setStopQuery] = useState('');
   const [stopResults, setStopResults] = useState<SearchPlace[]>([]);
@@ -87,7 +90,46 @@ export function RoutePreviewSheet({
   return (
     <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center pointer-events-none px-2 sm:px-4 pb-2 sm:pb-4">
       <div className="pointer-events-auto w-full max-w-lg bg-white/96 backdrop-blur-md rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden pb-safe">
-        <div className="p-4 space-y-2.5 max-h-[70vh] overflow-y-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setIsCollapsed((c) => !c)}
+          aria-label={isCollapsed ? 'Klap route-overzicht open' : 'Klap route-overzicht dicht'}
+          className="w-full flex items-center justify-center gap-2 pt-2 pb-1 px-4 cursor-pointer group"
+        >
+          <div className="w-10 h-1.5 rounded-full bg-slate-300 group-hover:bg-teal-500 transition" />
+          <span className="text-[11px] font-bold text-teal-700 inline-flex items-center gap-0.5">
+            {isCollapsed ? (
+              <>
+                Details <ChevronUp className="w-3.5 h-3.5" />
+              </>
+            ) : (
+              <>
+                Kaart <ChevronDown className="w-3.5 h-3.5" />
+              </>
+            )}
+          </span>
+        </button>
+
+        {isCollapsed ? (
+          <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm font-extrabold text-slate-900 truncate">{route.name}</div>
+              <div className="text-xs text-slate-500">
+                {formatDistance(route.actualDistanceMeters)} ·{' '}
+                {formatDuration(route.estimatedDurationSeconds)} · {route.pois.length} POIs
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onStartNavigation}
+              className="shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 text-white text-xs font-bold shadow-md cursor-pointer"
+            >
+              <Navigation className="w-3.5 h-3.5 fill-white" />
+              Start
+            </button>
+          </div>
+        ) : (
+        <div className="p-4 pt-2 space-y-2.5 max-h-[68vh] overflow-y-auto no-scrollbar">
           {/* Header row */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -389,6 +431,7 @@ export function RoutePreviewSheet({
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
