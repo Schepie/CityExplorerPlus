@@ -297,28 +297,144 @@ async function fetchWikipediaGeoPois(
   return results.flat();
 }
 
+const GEOAPIFY_CAT_MAP: Record<InterestId, string> = {
+  toerisme: 'tourism.sights,tourism.attraction',
+  erfgoed: 'heritage,tourism.sights.castle,tourism.sights.memorial',
+  natuur: 'leisure.park,natural',
+  kunst: 'entertainment.culture.gallery,tourism.sights.artwork',
+  cultuur: 'entertainment.museum,entertainment.culture.theatre',
+  uitzicht: 'tourism.sights.tower,tourism.attraction.viewpoint',
+  horeca: 'catering.cafe,catering.pub,catering.biergarten',
+  water: 'natural.water,leisure.marina',
+};
+
+/** Optional fast Geoapify Places POI search (only runs if user configured their free Geoapify key) */
+async function fetchGeoapifyPois(
+  center: LatLng,
+  clampedRadius: number,
+  effectiveInterests: InterestId[],
+  apiKey: string
+): Promise<POI[]> {
+  if (!apiKey.trim()) return [];
+  try {
+    const categories = Array.from(
+      new Set(effectiveInterests.map((id) => GEOAPIFY_CAT_MAP[id]).join(',').split(','))
+    ).join(',');
+    const url = `https://api.geoapify.com/v2/places?categories=${encodeURIComponent(
+      categories
+    )}&filter=circle:${center.lng.toFixed(5)},${center.lat.toFixed(5)},${Math.round(
+      clampedRadius
+    )}&limit=40&apiKey=${encodeURIComponent(apiKey.trim())}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const features: any[] = data?.features || [];
+    const primaryCat = effectiveInterests[0] ?? DEFAULT_INTEREST;
+
+    return features
+      .map((f) => {
+        const props = f.properties || {};
+        const name = (props.name || '').trim();
+        const [lng, lat] = f.geometry?.coordinates || [];
+        if (!name || lat === undefined || lng === undefined) return null;
+        if (NON_POI_TITLE_PATTERN.test(name)) return null;
+        const address = props.address_line2 || props.street || '';
+        const poi: POI = {
+          id: `geoapify-${props.place_id || `${lat}-${lng}`}`,
+          name,
+          lat,
+          lng,
+          category: primaryCat,
+          categoryLabel: INTEREST_MAP[primaryCat].label,
+          description: address
+            ? `${name}, gelegen aan ${address}.`
+            : `${name} — aanbevolen stop in de categorie ${INTEREST_MAP[primaryCat].label.toLowerCase()}.`,
+          descriptionLang: 'nl',
+          tags: {},
+          score: 52,
+          distanceFromStart: haversineMeters(center, { lat, lng }),
+        };
+        return poi;
+      })
+      .filter((p): p is POI => p !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** Optional Gemini Flash-Lite audiogids story for POIs without a Wikipedia summary (100% locally cached!) */
+async function generateGeminiPoiStory(
+  poi: POI,
+  apiKey: string
+): Promise<{ description: string; descriptionLang: 'nl' } | null> {
+  if (!apiKey.trim()) return null;
+  try {
+    const prompt = `Schrijf een korte, boeiende audiogids-uitleg van maximaal 2 à 3 zinnen in natuurlijk Nederlands over de bezienswaardigheid "${poi.name}" (categorie: ${poi.categoryLabel}, coördinaten: ${poi.lat.toFixed(4)}, ${poi.lng.toFixed(4)}). Geen opsommingstekens, geen aanhef, alleen de gesproken tekst.`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(
+      apiKey.trim()
+    )}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 120, temperature: 0.5 },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) return null;
+    return { description: text, descriptionLang: 'nl' };
+  } catch {
+    return null;
+  }
+}
+
+export function clearLocalPoiCache(): void {
+  try {
+    localStorage.removeItem(POI_CACHE_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
+export function getLocalPoiCacheCount(): number {
+  return Object.keys(loadWikiCache()).length;
+}
+
 /**
- * Discover POIs around a coordinate by running OpenStreetMap Overpass AND
- * Wikipedia GeoSearch (NL + EN) in parallel, so we ALWAYS return rich POIs
- * even when Overpass rate-limits (HTTP 429).
+ * Discover POIs around a coordinate by running OpenStreetMap Overpass,
+ * Wikipedia GeoSearch (NL + EN), and optional Geoapify Places in parallel.
  */
 export async function fetchPoisAround(
   center: LatLng,
   radiusMeters: number,
-  selectedInterests: InterestId[]
+  selectedInterests: InterestId[],
+  geoapifyApiKey?: string
 ): Promise<POI[]> {
   const effectiveInterests: InterestId[] =
     selectedInterests.length > 0 ? selectedInterests : [DEFAULT_INTEREST];
 
   const clampedRadius = Math.min(Math.max(radiusMeters, 800), 10000);
 
-  // Run Overpass + Wikipedia GeoSearch in parallel!
-  const [osmPois, wikiPois] = await Promise.all([
+  // Run Overpass + Wikipedia GeoSearch (+ optional Geoapify) in parallel!
+  const [osmPois, wikiPois, geoapifyPois] = await Promise.all([
     fetchOverpassPois(center, clampedRadius, effectiveInterests),
     fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0]),
+    geoapifyApiKey
+      ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
+      : Promise.resolve([]),
   ]);
 
-  // Merge & deduplicate (OSM matches win over duplicate Wikipedia entries by name or <45m proximity)
+  // Merge & deduplicate
   const merged: POI[] = [];
   const seenNames = new Set<string>();
 
@@ -333,15 +449,18 @@ export async function fetchPoisAround(
     merged.push(poi);
   };
 
-  // Prioritize OSM POIs matching exact selected interests, then Wikipedia highlights
   osmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
+  geoapifyPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   wikiPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
 
   return merged.sort((a, b) => b.score - a.score);
 }
 
-/** Enrich a list of selected route POIs with free Dutch/English Wikipedia summaries & photos */
-export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
+/** Enrich a list of selected route POIs with free Wikipedia summaries & optional locally-cached Gemini audiogids */
+export async function enrichPoisWithWikipedia(
+  pois: POI[],
+  geminiApiKey?: string
+): Promise<POI[]> {
   const cache = loadWikiCache();
   let cacheDirty = false;
 
@@ -370,6 +489,21 @@ export async function enrichPoisWithWikipedia(pois: POI[]): Promise<POI[]> {
           wikipediaUrl: summary.wikipediaUrl,
         };
       }
+
+      // Optional Gemini enrichment ONLY when no Wikipedia article exists (result is cached locally!)
+      if (geminiApiKey && geminiApiKey.trim().length > 10) {
+        const aiStory = await generateGeminiPoiStory(poi, geminiApiKey);
+        if (aiStory) {
+          cache[cacheKey] = { ...aiStory, cachedAt: Date.now() };
+          cacheDirty = true;
+          return {
+            ...poi,
+            description: aiStory.description,
+            descriptionLang: aiStory.descriptionLang,
+          };
+        }
+      }
+
       return { ...poi, descriptionLang: (poi.descriptionLang ?? 'nl') as 'nl' | 'en' | 'de' | 'fr' };
     })
   );

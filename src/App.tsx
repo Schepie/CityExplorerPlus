@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bookmark, Compass, Crosshair, Layers, Moon, Settings, Sun, WifiOff } from 'lucide-react';
+import { Bookmark, Compass, Crosshair, Layers, Moon, Mountain, Settings, Sun, WifiOff } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { NavigationOverlay } from './components/NavigationOverlay';
 import { PoiPopupModal } from './components/PoiPopupModal';
@@ -88,7 +88,7 @@ export function App() {
   const [summaryTrip, setSummaryTrip] = useState<CompletedTrip | null>(null);
   const [drawerState, setDrawerState] = useState<{
     open: boolean;
-    tab: 'options' | 'saved' | 'diary';
+    tab: 'options' | 'apis' | 'saved' | 'diary';
   }>({
     open: false,
     tab: 'options',
@@ -311,6 +311,8 @@ export function App() {
         sectorIndex,
         speedKmh,
         orsApiKey: settings.orsApiKey,
+        geoapifyApiKey: settings.geoapifyApiKey,
+        geminiApiKey: settings.geminiApiKey,
         onProgress: setProgressText,
       });
 
@@ -446,14 +448,25 @@ export function App() {
     }
   };
 
+  const hasMapTiler = settings.maptilerApiKey.trim().length > 6;
+
   const cycleMapStyle = () => {
-    setMapStyle((prev) =>
-      prev === 'standard' ? 'dark' : prev === 'dark' ? 'satellite' : 'standard'
-    );
+    setMapStyle((prev) => {
+      if (prev === 'standard') return hasMapTiler ? 'outdoor' : 'dark';
+      if (prev === 'outdoor') return 'dark';
+      if (prev === 'dark') return 'satellite';
+      return 'standard';
+    });
   };
 
   const mapStyleLabel =
-    mapStyle === 'standard' ? 'Kaart' : mapStyle === 'dark' ? 'Nacht' : 'Satelliet';
+    mapStyle === 'standard'
+      ? 'Kaart'
+      : mapStyle === 'outdoor'
+        ? 'Outdoor'
+        : mapStyle === 'dark'
+          ? 'Nacht'
+          : 'Satelliet';
 
   const handleSelectPoi = (poi: POI) => {
     if (navState?.isActive) {
@@ -474,6 +487,7 @@ export function App() {
         route={route}
         navState={navState}
         mapStyle={mapStyle}
+        maptilerApiKey={settings.maptilerApiKey}
         is3D={is3D}
         pitstops={pitstops}
         onPitchChange={setIs3D}
@@ -586,6 +600,8 @@ export function App() {
                 <Moon className="w-4 h-4 text-amber-300" />
               ) : mapStyle === 'satellite' ? (
                 <Layers className="w-4 h-4 text-teal-300" />
+              ) : mapStyle === 'outdoor' ? (
+                <Mountain className="w-4 h-4 text-emerald-300" />
               ) : (
                 <Sun className="w-4 h-4 text-teal-600" />
               )}
@@ -701,6 +717,8 @@ export function App() {
                 <Moon className="w-5 h-5 text-amber-300" />
               ) : mapStyle === 'satellite' ? (
                 <Layers className="w-5 h-5" />
+              ) : mapStyle === 'outdoor' ? (
+                <Mountain className="w-5 h-5 text-emerald-300" />
               ) : (
                 <Sun className="w-5 h-5" />
               )}

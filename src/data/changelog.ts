@@ -5,9 +5,20 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.3.1';
+export const APP_VERSION = '1.4.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.4.0',
+    date: '24 nov 2026',
+    title: 'Snelle eigen API-keys & lokale POI-cache',
+    items: [
+      'Nieuw API’s-tabblad met 1-tik Plak, live Test-knop en directe aanmaaklinks voor OpenRouteService, MapTiler Outdoor, Google Gemini en Geoapify.',
+      'MapTiler-key ontgrendelt automatisch een extra Outdoor/Topo wandel- & fietskaartlaag.',
+      'Gemini Flash-Lite schrijft optioneel Nederlandse audiogids-verhaaltjes voor POIs zonder Wikipedia, 100% lokaal gecachet.',
+      'Lokale POI-cache teller en Wis-knop; alle keys blijven uitsluitend op jouw eigen toestel.',
+    ],
+  },
   {
     version: '1.3.1',
     date: '24 nov 2026',

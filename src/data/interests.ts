@@ -147,4 +147,7 @@ export const DEFAULT_SETTINGS = {
   poiTriggerRadiusMeters: 60,
   keepScreenAwake: true,
   orsApiKey: '',
+  maptilerApiKey: '',
+  geminiApiKey: '',
+  geoapifyApiKey: '',
 };

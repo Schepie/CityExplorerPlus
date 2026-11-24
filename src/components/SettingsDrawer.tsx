@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   CloudDownload,
   Download,
+  KeyRound,
   RefreshCw,
   Smartphone,
   Sparkles,
@@ -18,10 +19,11 @@ import { audioService } from '../services/audioService';
 import { applyAppUpdate, type UpdateCheckResult } from '../services/updateService';
 import type { AppSettings, CompletedTrip, GeneratedRoute, SavedRoute } from '../types';
 import { formatDistance, formatDuration } from '../utils/geo';
+import { ApiKeysPanel } from './ApiKeysPanel';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
-  initialTab?: 'options' | 'saved' | 'diary';
+  initialTab?: 'options' | 'apis' | 'saved' | 'diary';
   onClose: () => void;
   settings: AppSettings;
   onUpdateSettings: (patch: Partial<AppSettings>) => void;
@@ -52,7 +54,7 @@ export function SettingsDrawer({
   onDownloadOfflineRoute,
   onDeleteCompletedTrip,
 }: SettingsDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'options' | 'saved' | 'diary'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'options' | 'apis' | 'saved' | 'diary'>(initialTab);
   const [showChangelog, setShowChangelog] = useState(false);
   const [dutchVoices, setDutchVoices] = useState<SpeechSynthesisVoice[]>(() =>
     audioService.getDutchVoices()
@@ -91,11 +93,11 @@ export function SettingsDrawer({
         </div>
 
         {/* Tabs */}
-        <div className="grid grid-cols-3 gap-1 p-1.5 bg-slate-100 mx-4 mt-3 rounded-2xl">
+        <div className="grid grid-cols-4 gap-1 p-1.5 bg-slate-100 mx-3 mt-3 rounded-2xl">
           <button
             type="button"
             onClick={() => setActiveTab('options')}
-            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
               activeTab === 'options' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
             }`}
           >
@@ -103,23 +105,33 @@ export function SettingsDrawer({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('apis')}
+            className={`py-2 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+              activeTab === 'apis' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            <KeyRound className="w-3 h-3" />
+            API’s
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('saved')}
-            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+            className={`py-2 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
               activeTab === 'saved' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
             }`}
           >
-            <Bookmark className="w-3.5 h-3.5" />
-            Trips ({savedRoutes.length})
+            <Bookmark className="w-3 h-3" />
+            Trips
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('diary')}
-            className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+            className={`py-2 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
               activeTab === 'diary' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
             }`}
           >
-            <Award className="w-3.5 h-3.5" />
-            Dagboek ({completedTrips.length})
+            <Award className="w-3 h-3" />
+            Dagboek
           </button>
         </div>
 
@@ -387,27 +399,27 @@ export function SettingsDrawer({
                 </label>
               </div>
 
-              {/* Optional OpenRouteService Key */}
-              <div className="space-y-1.5">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Routing API (Optioneel)
-                </h3>
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    De app werkt standaard <strong>100% gratis zonder API-key</strong> via
-                    OpenStreetMap (OSRM). Heb je een gratis{' '}
-                    <span className="font-semibold">OpenRouteService</span> key? Vul die hier in
-                    voor extra uitgebreide fiets-/wandelpaden.
-                  </p>
-                  <input
-                    type="password"
-                    placeholder="Optionele OpenRouteService API-key..."
-                    value={settings.orsApiKey}
-                    onChange={(e) => onUpdateSettings({ orsApiKey: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-white border border-slate-300 focus:outline-none focus:border-teal-600"
-                  />
+              {/* Quick shortcut to API Keys tab */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('apis')}
+                className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-teal-50 rounded-2xl border border-slate-200/90 hover:border-teal-300 transition cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">
+                      Eigen API-keys toevoegen (Optioneel)
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      OpenRouteService, MapTiler Topo, Gemini &amp; Geoapify
+                    </div>
+                  </div>
                 </div>
-              </div>
+                <span className="text-xs font-bold text-teal-700 shrink-0 ml-2">Open →</span>
+              </button>
 
               {/* PWA Install Tip */}
               <div className="p-3.5 rounded-2xl bg-teal-50 border border-teal-200/80 flex gap-3">
@@ -520,6 +532,8 @@ export function SettingsDrawer({
                 </div>
               </div>
             </>
+          ) : activeTab === 'apis' ? (
+            <ApiKeysPanel settings={settings} onUpdateSettings={onUpdateSettings} />
           ) : activeTab === 'saved' ? (
             <div className="space-y-2.5">
               {savedRoutes.length === 0 ? (

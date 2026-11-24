@@ -417,6 +417,8 @@ export async function generateLoopRoute(params: {
   sectorIndex: number;
   speedKmh: number;
   orsApiKey?: string;
+  geoapifyApiKey?: string;
+  geminiApiKey?: string;
   onProgress?: (message: string) => void;
 }): Promise<GeneratedRoute> {
   const {
@@ -427,6 +429,8 @@ export async function generateLoopRoute(params: {
     sectorIndex,
     speedKmh,
     orsApiKey,
+    geoapifyApiKey,
+    geminiApiKey,
     onProgress,
   } = params;
 
@@ -441,7 +445,7 @@ export async function generateLoopRoute(params: {
   onProgress?.('Interessante plekken (POIs) zoeken rond jouw startpunt...');
   // Search a full circle around start so we can pick the POI-richest direction!
   const searchRadius = Math.max(1200, Math.min(10000, Math.round(loopRadius * 1.25)));
-  const allPois = await fetchPoisAround(start, searchRadius, effectiveInterests);
+  const allPois = await fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey);
 
   // Rank the 4 compass sectors by total POI score so the loop naturally heads toward the best POIs!
   const candidateSectors = [35, 125, 215, 305];
@@ -548,7 +552,7 @@ export async function generateLoopRoute(params: {
 
   onProgress?.('Verhalen, foto’s & hoogteprofiel ophalen...');
   const [enrichedPois, elevation] = await Promise.all([
-    enrichPoisWithWikipedia(routePoisRaw),
+    enrichPoisWithWikipedia(routePoisRaw, geminiApiKey),
     fetchElevationProfile(bestRouting.coordinates, cumulativeDistances),
   ]);
 

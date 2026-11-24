@@ -8,6 +8,7 @@ interface MapViewProps {
   route: GeneratedRoute | null;
   navState: NavigationStatus | null;
   mapStyle: MapStyleMode;
+  maptilerApiKey?: string;
   is3D: boolean;
   pitstops?: Pitstop[];
   onPitchChange?: (tilted: boolean) => void;
@@ -19,6 +20,8 @@ interface MapViewProps {
 const ROUTE_SOURCE_ID = 'cep-route-source';
 const ROUTE_CASING_LAYER = 'cep-route-casing';
 const ROUTE_LINE_LAYER = 'cep-route-line';
+const OUTDOOR_SOURCE_ID = 'cep-outdoor-source';
+const OUTDOOR_LAYER_ID = 'cep-outdoor-layer';
 const DARK_SOURCE_ID = 'cep-dark-source';
 const DARK_LAYER_ID = 'cep-dark-layer';
 const SATELLITE_SOURCE_ID = 'cep-satellite-source';
@@ -31,6 +34,7 @@ export function MapView({
   route,
   navState,
   mapStyle,
+  maptilerApiKey,
   is3D,
   pitstops = [],
   onPitchChange,
@@ -250,10 +254,46 @@ export function MapView({
     }
   }, [center, route, navState?.isActive, navState?.currentPosition]);
 
-  // Toggle between standard, dark (night), and satellite imagery smoothly
+  // Toggle between standard, outdoor (MapTiler Topo), dark (night), and satellite imagery smoothly
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
+
+    // Dynamically add/update MapTiler Outdoor Topo layer when user has a MapTiler key
+    if (maptilerApiKey && maptilerApiKey.trim().length > 6) {
+      if (!map.getSource(OUTDOOR_SOURCE_ID)) {
+        map.addSource(OUTDOOR_SOURCE_ID, {
+          type: 'raster',
+          tiles: [
+            `https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(
+              maptilerApiKey.trim()
+            )}`,
+          ],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: '© MapTiler © OpenStreetMap',
+        });
+        map.addLayer(
+          {
+            id: OUTDOOR_LAYER_ID,
+            type: 'raster',
+            source: OUTDOOR_SOURCE_ID,
+            layout: {
+              visibility: mapStyle === 'outdoor' ? 'visible' : 'none',
+            },
+          },
+          ROUTE_CASING_LAYER
+        );
+      }
+    }
+
+    if (map.getLayer(OUTDOOR_LAYER_ID)) {
+      map.setLayoutProperty(
+        OUTDOOR_LAYER_ID,
+        'visibility',
+        mapStyle === 'outdoor' ? 'visible' : 'none'
+      );
+    }
     if (map.getLayer(DARK_LAYER_ID)) {
       map.setLayoutProperty(DARK_LAYER_ID, 'visibility', mapStyle === 'dark' ? 'visible' : 'none');
     }
@@ -268,10 +308,10 @@ export function MapView({
       map.setPaintProperty(
         ROUTE_LINE_LAYER,
         'line-color',
-        mapStyle === 'standard' ? '#0d9488' : '#2dd4bf'
+        mapStyle === 'standard' || mapStyle === 'outdoor' ? '#0d9488' : '#2dd4bf'
       );
     }
-  }, [mapStyle]);
+  }, [mapStyle, maptilerApiKey]);
 
   // Render nearby pitstop markers (toilet / water / cafe)
   useEffect(() => {

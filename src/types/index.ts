@@ -115,7 +115,7 @@ export interface CompletedTrip {
   totalPoisOnRoute: number;
 }
 
-export type MapStyleMode = 'standard' | 'dark' | 'satellite';
+export type MapStyleMode = 'standard' | 'outdoor' | 'dark' | 'satellite';
 
 export interface GeneratedRoute {
   id: string;
@@ -155,6 +155,9 @@ export interface AppSettings {
   poiTriggerRadiusMeters: number; // default 60
   keepScreenAwake: boolean;
   orsApiKey: string;
+  maptilerApiKey: string;
+  geminiApiKey: string;
+  geoapifyApiKey: string;
 }
 
 export interface SavedRoute {
