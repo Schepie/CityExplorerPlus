@@ -1,9 +1,7 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "releasedAt": "2026-11-24",
   "highlights": [
-    "Nieuw API's-tabblad om zelf snel API-keys toe te voegen (1-tik Plak, Test & directe aanmaaklinks)",
-    "Ondersteuning voor MapTiler Outdoor/Topo kaart, Google Gemini AI-audiogids (lokaal gecachet), Geoapify Places en OpenRouteService",
-    "Lokale POI- & AI-cache beheer direct op het toestel"
+    "Versleutelde QR- & PIN-sync (AES-256) om je API-keys en stemvoorkeur in 1 scan van PC naar GSM over te zetten — zonder extern account!"
   ]
 }

@@ -8,11 +8,13 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  QrCode,
   Trash2,
   XCircle,
 } from 'lucide-react';
 import { clearLocalPoiCache, getLocalPoiCacheCount } from '../services/poiService';
 import type { AppSettings } from '../types';
+import { KeySyncModal } from './KeySyncModal';
 
 interface ApiKeysPanelProps {
   settings: AppSettings;
@@ -108,6 +110,7 @@ export function ApiKeysPanel({ settings, onUpdateSettings }: ApiKeysPanelProps) 
     Record<string, 'idle' | 'testing' | 'ok' | 'fail'>
   >({});
   const [cacheCount, setCacheCount] = useState<number>(() => getLocalPoiCacheCount());
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
 
   const handlePaste = async (field: ApiKeyField) => {
     try {
@@ -138,16 +141,33 @@ export function ApiKeysPanel({ settings, onUpdateSettings }: ApiKeysPanelProps) 
   return (
     <div className="space-y-3">
       {/* Privacy & Local Storage Banner */}
-      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex gap-2.5">
-        <Lock className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-        <div className="text-xs text-emerald-900 leading-relaxed">
-          <div className="font-bold">
-            100% lokaal op jouw toestel ({activeCount}/{API_PROVIDERS.length} actief)
+      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 space-y-2.5">
+        <div className="flex gap-2.5">
+          <Lock className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-emerald-900 leading-relaxed">
+            <div className="font-bold">
+              100% lokaal op jouw toestel ({activeCount}/{API_PROVIDERS.length} actief)
+            </div>
+            Alle API-keys en gecachete POIs blijven uitsluitend op dit toestel bewaard.
           </div>
-          Alle API-keys en gecachete POIs blijven uitsluitend in de lokale opslag van jouw browser
-          bewaard. De app werkt standaard ook volledig zonder keys.
         </div>
+        <button
+          type="button"
+          onClick={() => setSyncModalOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+        >
+          <QrCode className="w-4 h-4" />
+          Sync keys tussen PC &amp; GSM (Versleutelde QR)
+        </button>
       </div>
+
+      {syncModalOpen && (
+        <KeySyncModal
+          settings={settings}
+          onImportSettings={onUpdateSettings}
+          onClose={() => setSyncModalOpen(false)}
+        />
+      )}
 
       {/* API Provider Cards */}
       {API_PROVIDERS.map((provider) => {

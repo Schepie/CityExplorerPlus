@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bookmark, Compass, Crosshair, Layers, Moon, Mountain, Settings, Sun, WifiOff } from 'lucide-react';
+import { KeySyncModal } from './components/KeySyncModal';
 import { MapView } from './components/MapView';
 import { NavigationOverlay } from './components/NavigationOverlay';
 import { PoiPopupModal } from './components/PoiPopupModal';
@@ -23,6 +24,7 @@ import {
 import { fetchNearbyPitstops } from './services/pitstopService';
 import { generateLoopRoute, rebuildRouteWithPois } from './services/routingService';
 import { loadSettings, saveSettings } from './services/storageService';
+import { extractKeySyncFromUrl } from './services/syncService';
 import {
   applyAppUpdate,
   checkForAppUpdate,
@@ -85,6 +87,13 @@ export function App() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [inspectedPoi, setInspectedPoi] = useState<POI | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [incomingKeySync, setIncomingKeySync] = useState<string | null>(() => {
+    const code = extractKeySyncFromUrl();
+    if (code) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    return code;
+  });
   const [summaryTrip, setSummaryTrip] = useState<CompletedTrip | null>(null);
   const [drawerState, setDrawerState] = useState<{
     open: boolean;
@@ -755,6 +764,16 @@ export function App() {
               setInspectedPoi(null);
             }
           }}
+        />
+      )}
+
+      {/* Incoming Encrypted API-Key Sync Modal (from scanning QR on GSM) */}
+      {incomingKeySync && (
+        <KeySyncModal
+          settings={settings}
+          initialIncomingCode={incomingKeySync}
+          onImportSettings={handleUpdateSettings}
+          onClose={() => setIncomingKeySync(null)}
         />
       )}
 

@@ -5,9 +5,18 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.5.0',
+    date: '24 nov 2026',
+    title: 'Versleutelde QR- & PIN-sync tussen PC en GSM',
+    items: [
+      'Zet al je API-keys en stemvoorkeur met één AES-256 versleutelde QR-code of sync-link over van PC naar GSM (zonder extern account).',
+      'Scan de QR-code met je telefooncamera, vul je zelfgekozen PIN/wachtwoord in en al je keys zijn direct actief.',
+    ],
+  },
   {
     version: '1.4.0',
     date: '24 nov 2026',
