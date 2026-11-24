@@ -8,6 +8,7 @@ import { RoutePreviewSheet } from './components/RoutePreviewSheet';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { ShareRouteModal } from './components/ShareRouteModal';
 import { TripSummaryModal } from './components/TripSummaryModal';
+import { APP_VERSION } from './data/changelog';
 import { useNavigation } from './hooks/useNavigation';
 import { reverseGeocode } from './services/geocodingService';
 import {
@@ -21,6 +22,11 @@ import {
 import { fetchNearbyPitstops } from './services/pitstopService';
 import { generateLoopRoute, rebuildRouteWithPois } from './services/routingService';
 import { loadSettings, saveSettings } from './services/storageService';
+import {
+  applyAppUpdate,
+  checkForAppUpdate,
+  type UpdateCheckResult,
+} from './services/updateService';
 import { fetchWeatherAt } from './services/weatherService';
 import type {
   ActivityMode,
@@ -89,6 +95,23 @@ export function App() {
   const [offlineProgress, setOfflineProgress] = useState<{ pct: number; label: string } | null>(
     null
   );
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    try {
+      const res = await checkForAppUpdate();
+      setUpdateInfo(res);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  // Automatically check for app updates on startup
+  useEffect(() => {
+    handleCheckUpdate();
+  }, [handleCheckUpdate]);
 
   const {
     navState,
@@ -460,7 +483,8 @@ export function App() {
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-black text-slate-900 leading-none truncate">
-                    CityExplorer<span className="text-teal-600">+</span>
+                    CityExplorer<span className="text-teal-600">+</span>{' '}
+                    <span className="text-[10px] font-bold text-slate-400">v{APP_VERSION}</span>
                   </div>
                   <div className="hidden sm:block text-[10px] font-semibold text-slate-500 leading-tight">
                     Fiets &amp; Wandel Lusroutes
@@ -487,13 +511,31 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setDrawerState({ open: true, tab: 'options' })}
-                  aria-label="Open opties en dagboek"
-                  className="p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
+                  aria-label="Open opties, updates en dagboek"
+                  className="relative p-2.5 rounded-2xl bg-white/95 backdrop-blur-md hover:bg-slate-50 text-slate-700 shadow-lg border border-slate-200/80 transition cursor-pointer"
                 >
                   <Settings className="w-4 h-4" />
+                  {updateInfo?.status === 'update-available' && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-500 border-2 border-white" />
+                  )}
                 </button>
               </div>
             </div>
+
+            {updateInfo?.status === 'update-available' && (
+              <div className="pointer-events-auto flex items-center justify-between gap-2 bg-teal-700 text-white text-xs font-bold px-3 py-2 rounded-2xl shadow-lg max-w-md">
+                <span className="truncate">
+                  Nieuwe versie v{updateInfo.latestVersion} beschikbaar!
+                </span>
+                <button
+                  type="button"
+                  onClick={applyAppUpdate}
+                  className="shrink-0 px-2.5 py-1 rounded-xl bg-white text-teal-800 text-[11px] font-extrabold cursor-pointer"
+                >
+                  Updaten
+                </button>
+              </div>
+            )}
 
             {isOffline && (
               <div className="pointer-events-auto inline-flex items-center gap-1.5 bg-slate-900/90 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
@@ -711,6 +753,9 @@ export function App() {
         onUpdateSettings={handleUpdateSettings}
         savedRoutes={savedRoutes}
         completedTrips={completedTrips}
+        updateInfo={updateInfo}
+        checkingUpdate={checkingUpdate}
+        onCheckUpdate={handleCheckUpdate}
         onLoadSavedRoute={(loaded) => {
           stopNavigation();
           setStartLocation(loaded.startLocation);
