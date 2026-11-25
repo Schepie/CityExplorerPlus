@@ -16,12 +16,21 @@ import {
 } from 'lucide-react';
 import { INTERESTS } from '../data/interests';
 import { searchPlaces } from '../services/geocodingService';
-import type { ActivityMode, InterestId, LatLng, SearchPlace, TargetType } from '../types';
+import type {
+  ActivityMode,
+  InterestId,
+  LatLng,
+  SearchPlace,
+  SurfacePreference,
+  TargetType,
+} from '../types';
 import { formatDuration } from '../utils/geo';
 
 interface RoutePlannerSheetProps {
   activity: ActivityMode;
   onActivityChange: (a: ActivityMode) => void;
+  surfacePreference: SurfacePreference;
+  onSurfacePreferenceChange: (s: SurfacePreference) => void;
   targetType: TargetType;
   onTargetTypeChange: (t: TargetType) => void;
   distanceKm: number;
@@ -48,6 +57,8 @@ interface RoutePlannerSheetProps {
 export function RoutePlannerSheet({
   activity,
   onActivityChange,
+  surfacePreference,
+  onSurfacePreferenceChange,
   targetType,
   onTargetTypeChange,
   distanceKm,
@@ -299,6 +310,43 @@ export function RoutePlannerSheet({
               <Bike className="w-4 h-4" />
               Fietsen
             </button>
+          </div>
+
+          {/* Surface / Trail Preference: Unpaved Trails vs Balanced vs Paved */}
+          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-2xl">
+            {(
+              [
+                {
+                  id: 'trails',
+                  label: activity === 'walking' ? '🥾 Onverhard' : '🚵 Gravel/Bos',
+                  title: 'Voorkeur voor wandelpaden, bospaden en onverharde wegen',
+                },
+                {
+                  id: 'balanced',
+                  label: '⚖️ Mix',
+                  title: 'Combinatie van verharde en onverharde paden',
+                },
+                {
+                  id: 'paved',
+                  label: '🛣️ Verhard',
+                  title: 'Vooral verharde wegen en fietspaden',
+                },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                title={opt.title}
+                onClick={() => onSurfacePreferenceChange(opt.id)}
+                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                  surfacePreference === opt.id
+                    ? 'bg-white text-teal-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
 
           {/* Distance / Duration selector */}

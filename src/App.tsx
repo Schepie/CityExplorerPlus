@@ -44,6 +44,7 @@ import type {
   POI,
   SavedRoute,
   SearchPlace,
+  SurfacePreference,
   TargetType,
   WeatherInfo,
 } from './types';
@@ -69,6 +70,7 @@ export function App() {
 
   // Planner form state
   const [activity, setActivity] = useState<ActivityMode>('walking');
+  const [surfacePreference, setSurfacePreference] = useState<SurfacePreference>('trails');
   const [targetType, setTargetType] = useState<TargetType>('distance');
   const [distanceKm, setDistanceKm] = useState<number>(4.5);
   const [durationMin, setDurationMin] = useState<number>(60);
@@ -315,6 +317,7 @@ export function App() {
       const generated = await generateLoopRoute({
         start: startLocation,
         activity,
+        surfacePreference,
         targetDistanceKm: effectiveDistanceKm,
         selectedInterests,
         sectorIndex,
@@ -640,6 +643,8 @@ export function App() {
         <RoutePlannerSheet
           activity={activity}
           onActivityChange={handleActivityChange}
+          surfacePreference={surfacePreference}
+          onSurfacePreferenceChange={setSurfacePreference}
           targetType={targetType}
           onTargetTypeChange={setTargetType}
           distanceKm={distanceKm}

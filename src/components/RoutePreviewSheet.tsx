@@ -145,6 +145,11 @@ export function RoutePreviewSheet({
                 <h2 className="font-extrabold text-slate-900 text-base truncate">{route.name}</h2>
                 <p className="text-xs text-slate-500">
                   Lusroute · {route.pois.length} stops
+                  {route.surfacePreference === 'trails'
+                    ? ' · 🥾 Incl. onverhard'
+                    : route.surfacePreference === 'paved'
+                      ? ' · 🛣️ Verhard'
+                      : ''}
                   {savedEntry?.cityName ? ` · ${savedEntry.cityName}` : ''}
                 </p>
               </div>

@@ -1,5 +1,6 @@
 export type ActivityMode = 'walking' | 'cycling';
 export type TargetType = 'distance' | 'duration';
+export type SurfacePreference = 'balanced' | 'trails' | 'paved';
 
 export type InterestId =
   | 'toerisme'
@@ -121,6 +122,7 @@ export interface GeneratedRoute {
   id: string;
   name: string;
   activity: ActivityMode;
+  surfacePreference?: SurfacePreference;
   targetDistanceKm: number;
   actualDistanceMeters: number;
   estimatedDurationSeconds: number;

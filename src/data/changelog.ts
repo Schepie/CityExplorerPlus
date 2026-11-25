@@ -5,9 +5,18 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.6.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.6.0',
+    date: '25 nov 2026',
+    title: 'Onverharde paden & echte wandel-/bospaden',
+    items: [
+      'Nieuwe padkeuze in de routeplanner: 🥾 Onverhard (wandel-/bospaden & gravel), ⚖️ Mix of 🛣️ Verhard.',
+      'Gebruikt automatisch de hiking- en MTB-profielen (foot-hiking / cycling-mountain) bij OpenRouteService én trekt de lus via echte OpenStreetMap onverharde paden.',
+    ],
+  },
   {
     version: '1.5.0',
     date: '24 nov 2026',

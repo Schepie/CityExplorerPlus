@@ -6,6 +6,7 @@ import type {
   LatLng,
   ManeuverType,
   POI,
+  SurfacePreference,
   TurnStep,
 } from '../types';
 import {
@@ -16,7 +17,7 @@ import {
   projectOntoRoute,
 } from '../utils/geo';
 import { fetchElevationProfile } from './elevationService';
-import { enrichPoisWithWikipedia, fetchPoisAround } from './poiService';
+import { enrichPoisWithWikipedia, fetchPoisAround, fetchTrailNodesAround } from './poiService';
 
 interface RoutingResult {
   coordinates: [number, number][];
@@ -41,7 +42,8 @@ function buildCalibratedLoopWaypoints(
   allPois: POI[],
   loopRadiusMeters: number,
   sectorCenterDeg: number,
-  targetDistanceKm: number
+  targetDistanceKm: number,
+  trailNodes: LatLng[] = []
 ): LoopWaypointBuild {
   // 4 anchors for short routes (<5km), 5 anchors for medium/long routes (>=5km)
   const anchorTemplates: Array<{ angleOffset: number; radiusFactor: number }> =
@@ -105,6 +107,18 @@ function buildCalibratedLoopWaypoints(
       usedPoiIds.add(bestPoi.id);
       selectedPois.push(bestPoi);
       innerWaypoints.push({ lat: bestPoi.lat, lng: bestPoi.lng });
+    } else if (trailNodes.length > 0) {
+      // Snap geometric anchor onto the closest real unpaved hiking/forest trail!
+      let nearestTrail: LatLng | null = null;
+      let nearestDist = Math.max(400, loopRadiusMeters * 0.55);
+      for (const tn of trailNodes) {
+        const d = haversineMeters(anchor, tn);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestTrail = tn;
+        }
+      }
+      innerWaypoints.push(nearestTrail ?? anchor);
     } else {
       innerWaypoints.push(anchor);
     }
@@ -236,24 +250,42 @@ function translateOsrmStep(
   };
 }
 
-/** Route via OpenRouteService (if user supplied a free ORS key) */
+/** Route via OpenRouteService (supports foot-hiking & cycling-mountain for unpaved trails!) */
 async function routeWithOpenRouteService(
   waypoints: LatLng[],
   activity: ActivityMode,
-  apiKey: string
+  apiKey: string,
+  surfacePreference: SurfacePreference = 'balanced'
 ): Promise<RoutingResult> {
-  const profile = activity === 'walking' ? 'foot-walking' : 'cycling-regular';
+  const profile =
+    activity === 'walking'
+      ? surfacePreference === 'trails'
+        ? 'foot-hiking'
+        : 'foot-walking'
+      : surfacePreference === 'trails'
+        ? 'cycling-mountain'
+        : surfacePreference === 'paved'
+          ? 'cycling-road'
+          : 'cycling-regular';
+
+  const body: Record<string, unknown> = {
+    coordinates: waypoints.map((p) => [p.lng, p.lat]),
+    language: 'nl',
+    instructions: true,
+    preference: surfacePreference === 'trails' ? 'recommended' : 'shortest',
+  };
+
+  if (surfacePreference === 'paved' && activity === 'walking') {
+    body.options = { avoid_features: ['steps'] };
+  }
+
   const resp = await fetch(`https://api.openrouteservice.org/v2/directions/${profile}/geojson`, {
     method: 'POST',
     headers: {
       Authorization: apiKey,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      coordinates: waypoints.map((p) => [p.lng, p.lat]),
-      language: 'nl',
-      instructions: true,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
@@ -412,6 +444,7 @@ async function routeWithOsrm(waypoints: LatLng[], activity: ActivityMode): Promi
 export async function generateLoopRoute(params: {
   start: LatLng;
   activity: ActivityMode;
+  surfacePreference?: SurfacePreference;
   targetDistanceKm: number;
   selectedInterests: InterestId[];
   sectorIndex: number;
@@ -424,6 +457,7 @@ export async function generateLoopRoute(params: {
   const {
     start,
     activity,
+    surfacePreference = 'balanced',
     targetDistanceKm,
     selectedInterests,
     sectorIndex,
@@ -442,10 +476,19 @@ export async function generateLoopRoute(params: {
   // Initial teardrop loop radius: street perimeter ≈ 3.35 * R
   let loopRadius = Math.max(320, targetMeters / 3.35);
 
-  onProgress?.('Interessante plekken (POIs) zoeken rond jouw startpunt...');
+  onProgress?.(
+    surfacePreference === 'trails'
+      ? 'POIs & onverharde wandelpaden zoeken...'
+      : 'Interessante plekken (POIs) zoeken rond jouw startpunt...'
+  );
   // Search a full circle around start so we can pick the POI-richest direction!
   const searchRadius = Math.max(1200, Math.min(10000, Math.round(loopRadius * 1.25)));
-  const allPois = await fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey);
+  const [allPois, trailNodes] = await Promise.all([
+    fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey),
+    surfacePreference === 'trails'
+      ? fetchTrailNodesAround(start, searchRadius)
+      : Promise.resolve([]),
+  ]);
 
   // Rank the 4 compass sectors by total POI score so the loop naturally heads toward the best POIs!
   const candidateSectors = [35, 125, 215, 305];
@@ -468,7 +511,7 @@ export async function generateLoopRoute(params: {
   const computeRoute = async (wps: LatLng[]): Promise<RoutingResult> => {
     if (orsApiKey && orsApiKey.trim().length > 10) {
       try {
-        return await routeWithOpenRouteService(wps, activity, orsApiKey.trim());
+        return await routeWithOpenRouteService(wps, activity, orsApiKey.trim(), surfacePreference);
       } catch (err) {
         console.warn('ORS failed, falling back to OSRM:', err);
       }
@@ -494,7 +537,8 @@ export async function generateLoopRoute(params: {
       allPois,
       loopRadius,
       sectorCenterDeg,
-      targetDistanceKm
+      targetDistanceKm,
+      trailNodes
     );
 
     const candidate = await computeRoute(built.waypoints);
@@ -574,6 +618,7 @@ export async function generateLoopRoute(params: {
     id: `route-${Date.now()}`,
     name: `${modeLabel} · ${primaryLabel}`,
     activity,
+    surfacePreference,
     targetDistanceKm,
     actualDistanceMeters: bestRouting.distanceMeters,
     estimatedDurationSeconds,
@@ -607,7 +652,12 @@ export async function rebuildRouteWithPois(
   let routing: RoutingResult;
   if (orsApiKey && orsApiKey.trim().length > 10) {
     try {
-      routing = await routeWithOpenRouteService(waypoints, baseRoute.activity, orsApiKey.trim());
+      routing = await routeWithOpenRouteService(
+        waypoints,
+        baseRoute.activity,
+        orsApiKey.trim(),
+        baseRoute.surfacePreference
+      );
     } catch {
       routing = await routeWithOsrm(waypoints, baseRoute.activity);
     }

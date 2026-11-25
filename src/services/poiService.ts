@@ -411,6 +411,50 @@ export function getLocalPoiCacheCount(): number {
 }
 
 /**
+ * Fetch real unpaved / forest / hiking trail anchor points around `center` from OpenStreetMap
+ * so loop routes actively follow genuine walking trails & unpaved tracks instead of paved roads.
+ */
+export async function fetchTrailNodesAround(
+  center: LatLng,
+  radiusMeters: number
+): Promise<LatLng[]> {
+  const r = Math.min(Math.max(Math.round(radiusMeters), 800), 9000);
+  const query = `[out:json][timeout:10];(
+way["highway"~"^(path|track|bridleway)$"]["access"!="private"]["access"!="no"](around:${r},${center.lat.toFixed(5)},${center.lng.toFixed(5)});
+way["highway"="footway"]["surface"~"^(unpaved|gravel|fine_gravel|compacted|dirt|earth|ground|sand|grass|woodchips)$"](around:${r},${center.lat.toFixed(5)},${center.lng.toFixed(5)});
+);out center 80;`;
+
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const elements: OverpassElement[] = data?.elements || [];
+      const pts: LatLng[] = [];
+      for (const el of elements) {
+        const lat = el.center?.lat ?? el.lat;
+        const lng = el.center?.lon ?? el.lon;
+        if (lat !== undefined && lng !== undefined) {
+          pts.push({ lat, lng });
+        }
+      }
+      if (pts.length > 0) return pts;
+    } catch {
+      // Try next Overpass mirror
+    }
+  }
+  return [];
+}
+
+/**
  * Discover POIs around a coordinate by running OpenStreetMap Overpass,
  * Wikipedia GeoSearch (NL + EN), and optional Geoapify Places in parallel.
  */
