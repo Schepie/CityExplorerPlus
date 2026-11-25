@@ -24,6 +24,8 @@ const OUTDOOR_SOURCE_ID = 'cep-outdoor-source';
 const OUTDOOR_LAYER_ID = 'cep-outdoor-layer';
 const DARK_SOURCE_ID = 'cep-dark-source';
 const DARK_LAYER_ID = 'cep-dark-layer';
+const DARK_LABELS_SOURCE_ID = 'cep-dark-labels-source';
+const DARK_LABELS_LAYER_ID = 'cep-dark-labels-layer';
 const SATELLITE_SOURCE_ID = 'cep-satellite-source';
 const SATELLITE_LAYER_ID = 'cep-satellite-layer';
 const SATELLITE_LABELS_SOURCE_ID = 'cep-satellite-labels-source';
@@ -89,22 +91,39 @@ export function MapView({
     map.on('load', () => {
       mapLoadedRef.current = true;
 
-      // Dark / Night navigation map layer (Carto Dark Matter, zero-flicker toggle)
+      // Dark / Night navigation map layer (free Esri Dark Gray Canvas + Labels, 0 API key needed!)
       map.addSource(DARK_SOURCE_ID, {
         type: 'raster',
         tiles: [
-          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
         ],
         tileSize: 256,
-        maxzoom: 19,
-        attribution: '© CARTO, OpenStreetMap',
+        maxzoom: 16,
+        attribution: '© Esri, HERE, Garmin, OpenStreetMap',
       });
 
       map.addLayer({
         id: DARK_LAYER_ID,
         type: 'raster',
         source: DARK_SOURCE_ID,
+        layout: {
+          visibility: mapStyle === 'dark' ? 'visible' : 'none',
+        },
+      });
+
+      map.addSource(DARK_LABELS_SOURCE_ID, {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+        ],
+        tileSize: 256,
+        maxzoom: 16,
+      });
+
+      map.addLayer({
+        id: DARK_LABELS_LAYER_ID,
+        type: 'raster',
+        source: DARK_LABELS_SOURCE_ID,
         layout: {
           visibility: mapStyle === 'dark' ? 'visible' : 'none',
         },
@@ -294,8 +313,12 @@ export function MapView({
         mapStyle === 'outdoor' ? 'visible' : 'none'
       );
     }
+    const darkVis = mapStyle === 'dark' ? 'visible' : 'none';
     if (map.getLayer(DARK_LAYER_ID)) {
-      map.setLayoutProperty(DARK_LAYER_ID, 'visibility', mapStyle === 'dark' ? 'visible' : 'none');
+      map.setLayoutProperty(DARK_LAYER_ID, 'visibility', darkVis);
+    }
+    if (map.getLayer(DARK_LABELS_LAYER_ID)) {
+      map.setLayoutProperty(DARK_LABELS_LAYER_ID, 'visibility', darkVis);
     }
     const satVis = mapStyle === 'satellite' ? 'visible' : 'none';
     if (map.getLayer(SATELLITE_LAYER_ID)) {

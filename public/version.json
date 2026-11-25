@@ -1,8 +1,8 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.1",
   "releasedAt": "2026-11-25",
   "highlights": [
-    "Nieuwe keuze voor ondergrond: 🥾 Onverhard & Wandelpaden (gravel/bos), ⚖️ Mix of 🛣️ Verhard",
-    "Gebruikt automatisch foot-hiking / cycling-mountain (ORS) én OpenStreetMap onverharde paden langs de lus"
+    "Donkere nachtkaart omgezet naar gratis Esri Dark Gray (geen CARTO API-key meer nodig!)",
+    "Onverharde paden & wandel-/bospaden optie (🥾 Onverhard / ⚖️ Mix / 🛣️ Verhard)"
   ]
 }

@@ -5,9 +5,17 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.6.1';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.6.1',
+    date: '25 nov 2026',
+    title: 'Gratis donkere nachtkaart zonder API-key',
+    items: [
+      'CARTO Dark Matter (die nu een API-key vereist) vervangen door gratis Esri Dark Gray nachtkaart + straat-/plaatsnamen (0 API-key nodig).',
+    ],
+  },
   {
     version: '1.6.0',
     date: '25 nov 2026',
