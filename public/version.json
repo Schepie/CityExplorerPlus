@@ -1,7 +1,8 @@
 {
-  "version": "1.8.2",
+  "version": "1.9.0",
   "releasedAt": "2026-11-25",
   "highlights": [
-    "Zelf POI-bronnen aan- en uitzetten in het Optiemenu (OpenStreetMap, Wikidata, Wikimedia Commons, Wikipedia, Geoapify & OpenTripMap)"
+    "Google Places API (New) toegevoegd als optionele eigen API-key: toont top-beoordeelde highlights (★ ratings, reviews & foto's)",
+    "Inclusief 1-tik Plak, live Test-knop, aan/uit-schakelaar bij POI-bronnen en versleutelde QR-sync"
   ]
 }

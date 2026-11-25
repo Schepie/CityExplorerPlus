@@ -5,9 +5,18 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.8.2';
+export const APP_VERSION = '1.9.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.9.0',
+    date: '25 nov 2026',
+    title: 'Google Places API (eigen key) voor top-beoordeelde POIs',
+    items: [
+      'Gebruikers kunnen nu hun eigen Google Places API (New) sleutel toevoegen in het tabblad API’s (100% lokaal bewaard + QR-sync).',
+      'Haalt populaire, hoog beoordeelde highlights en horeca op met ★ sterrenratings, aantallen reviews, Nederlandse samenvattingen en foto’s.',
+    ],
+  },
   {
     version: '1.8.2',
     date: '25 nov 2026',

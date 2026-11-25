@@ -3,6 +3,7 @@ import type { AppSettings } from '../types';
 export interface SyncedKeysPayload {
   v: 1;
   orsApiKey?: string;
+  googlePlacesApiKey?: string;
   maptilerApiKey?: string;
   geminiApiKey?: string;
   geoapifyApiKey?: string;
@@ -60,6 +61,7 @@ export async function encryptKeysPayload(
   const payload: SyncedKeysPayload = {
     v: 1,
     orsApiKey: settings.orsApiKey.trim() || undefined,
+    googlePlacesApiKey: settings.googlePlacesApiKey.trim() || undefined,
     maptilerApiKey: settings.maptilerApiKey.trim() || undefined,
     geminiApiKey: settings.geminiApiKey.trim() || undefined,
     geoapifyApiKey: settings.geoapifyApiKey.trim() || undefined,

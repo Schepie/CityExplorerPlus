@@ -23,6 +23,7 @@ interface ApiKeysPanelProps {
 
 type ApiKeyField =
   | 'orsApiKey'
+  | 'googlePlacesApiKey'
   | 'maptilerApiKey'
   | 'geminiApiKey'
   | 'geoapifyApiKey'
@@ -55,6 +56,33 @@ const API_PROVIDERS: ApiProviderConfig[] = [
             [5.1214, 52.0907],
             [5.124, 52.092],
           ],
+        }),
+      });
+      return resp.ok;
+    },
+  },
+  {
+    field: 'googlePlacesApiKey',
+    name: 'Google Places (New)',
+    badge: '★ Top-POIs & Horeca',
+    description:
+      'Eigen Google Cloud key (maandelijks gratis tegoed). Sterrenratings, top-highlights & foto’s.',
+    signupUrl: 'https://console.cloud.google.com/apis/library/places-backend.googleapis.com',
+    placeholder: 'Plak Google Places API-key (AIza...)',
+    testFn: async (key) => {
+      const resp = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'places.id',
+        },
+        body: JSON.stringify({
+          includedTypes: ['tourist_attraction'],
+          maxResultCount: 1,
+          locationRestriction: {
+            circle: { center: { latitude: 50.8467, longitude: 4.3525 }, radius: 1000 },
+          },
         }),
       });
       return resp.ok;

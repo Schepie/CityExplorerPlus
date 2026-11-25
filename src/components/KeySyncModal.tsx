@@ -48,6 +48,7 @@ export function KeySyncModal({
 
   const configuredKeyCount = [
     settings.orsApiKey,
+    settings.googlePlacesApiKey,
     settings.maptilerApiKey,
     settings.geminiApiKey,
     settings.geoapifyApiKey,
@@ -90,6 +91,10 @@ export function KeySyncModal({
       let count = 0;
       if (payload.orsApiKey) {
         patch.orsApiKey = payload.orsApiKey;
+        count++;
+      }
+      if (payload.googlePlacesApiKey) {
+        patch.googlePlacesApiKey = payload.googlePlacesApiKey;
         count++;
       }
       if (payload.maptilerApiKey) {

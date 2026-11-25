@@ -150,6 +150,7 @@ export interface PoiSourcesConfig {
   wikidata: boolean;
   commons: boolean;
   wikipedia: boolean;
+  googlePlaces: boolean;
   geoapify: boolean;
   opentripmap: boolean;
 }
@@ -170,6 +171,7 @@ export interface AppSettings {
   orsApiKey: string;
   maptilerApiKey: string;
   geminiApiKey: string;
+  googlePlacesApiKey: string;
   geoapifyApiKey: string;
   opentripmapApiKey: string;
 }

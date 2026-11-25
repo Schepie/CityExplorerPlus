@@ -1,7 +1,7 @@
 {
   "name": "city-explorer-plus",
   "private": true,
-  "version": "1.8.2",
+  "version": "1.9.0",
   "author": "Geert Schepers",
   "type": "module",
   "scripts": {

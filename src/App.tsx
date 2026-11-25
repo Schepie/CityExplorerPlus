@@ -324,6 +324,7 @@ export function App() {
         sectorIndex,
         speedKmh,
         orsApiKey: settings.orsApiKey,
+        googlePlacesApiKey: settings.googlePlacesApiKey,
         geoapifyApiKey: settings.geoapifyApiKey,
         opentripmapApiKey: settings.opentripmapApiKey,
         geminiApiKey: settings.geminiApiKey,

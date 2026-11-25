@@ -432,6 +432,14 @@ export function SettingsDrawer({
                         needsKey: false,
                       },
                       {
+                        key: 'googlePlaces',
+                        label: 'Google Places (New)',
+                        desc: settings.googlePlacesApiKey.trim()
+                          ? 'Actief met jouw Google Places API-key (★ ratings)'
+                          : 'Optioneel — vul jouw key in onder tabblad API’s',
+                        needsKey: !settings.googlePlacesApiKey.trim(),
+                      },
+                      {
                         key: 'geoapify',
                         label: 'Geoapify Places',
                         desc: settings.geoapifyApiKey.trim()

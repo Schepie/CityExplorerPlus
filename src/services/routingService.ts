@@ -623,6 +623,7 @@ export async function generateLoopRoute(params: {
   sectorIndex: number;
   speedKmh: number;
   orsApiKey?: string;
+  googlePlacesApiKey?: string;
   geoapifyApiKey?: string;
   opentripmapApiKey?: string;
   geminiApiKey?: string;
@@ -638,6 +639,7 @@ export async function generateLoopRoute(params: {
     sectorIndex,
     speedKmh,
     orsApiKey,
+    googlePlacesApiKey,
     geoapifyApiKey,
     opentripmapApiKey,
     geminiApiKey,
@@ -667,7 +669,8 @@ export async function generateLoopRoute(params: {
       effectiveInterests,
       geoapifyApiKey,
       opentripmapApiKey,
-      poiSources
+      poiSources,
+      googlePlacesApiKey
     ),
     surfacePreference === 'trails'
       ? fetchTrailNodesAround(start, searchRadius)

@@ -721,10 +721,123 @@ async function fetchWikimediaCommonsGeoPois(
   }
 }
 
+const GOOGLE_PLACES_TYPE_MAP: Record<InterestId, string[]> = {
+  toerisme: ['tourist_attraction', 'historical_landmark', 'cultural_landmark'],
+  erfgoed: ['historical_landmark', 'church', 'monument'],
+  natuur: ['park', 'national_park', 'botanical_garden', 'hiking_area'],
+  kunst: ['art_gallery', 'sculpture', 'cultural_center'],
+  cultuur: ['museum', 'performing_arts_theater', 'historical_landmark'],
+  uitzicht: ['observation_deck', 'tourist_attraction', 'park'],
+  horeca: ['cafe', 'coffee_shop', 'bar', 'ice_cream_shop'],
+  water: ['marina', 'park', 'tourist_attraction'],
+};
+
 /**
- * Discover POIs around a coordinate by running OpenStreetMap Overpass,
- * Wikidata GeoSearch, Wikimedia Commons GeoSearch, Wikipedia GeoSearch (NL + EN),
- * and optional Geoapify/OpenTripMap in parallel.
+ * Optional Google Places API (New) — uses the user's own API key (stored locally).
+ * Returns top-rated, popular places with Dutch summaries, star ratings & photos.
+ */
+async function fetchGooglePlacesPois(
+  center: LatLng,
+  clampedRadius: number,
+  effectiveInterests: InterestId[],
+  apiKey: string
+): Promise<POI[]> {
+  if (!apiKey.trim()) return [];
+  try {
+    const includedTypes = Array.from(
+      new Set(effectiveInterests.flatMap((id) => GOOGLE_PLACES_TYPE_MAP[id]))
+    ).slice(0, 12);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8500);
+    const resp = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey.trim(),
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.editorialSummary,places.formattedAddress,places.photos',
+      },
+      body: JSON.stringify({
+        includedTypes,
+        maxResultCount: 20,
+        languageCode: 'nl',
+        rankPreference: 'POPULARITY',
+        locationRestriction: {
+          circle: {
+            center: { latitude: center.lat, longitude: center.lng },
+            radius: Math.min(50000, Math.max(500, Math.round(clampedRadius))),
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return [];
+
+    const data = await resp.json();
+    const places: any[] = data?.places || [];
+    const primaryCat = effectiveInterests[0] ?? DEFAULT_INTEREST;
+
+    return places
+      .map((pl) => {
+        const name: string = (pl.displayName?.text || '').trim();
+        const lat: number | undefined = pl.location?.latitude;
+        const lng: number | undefined = pl.location?.longitude;
+        if (!name || lat === undefined || lng === undefined) return null;
+        if (NON_POI_TITLE_PATTERN.test(name)) return null;
+
+        const rating: number | undefined = pl.rating;
+        const reviewCount: number = pl.userRatingCount || 0;
+        // Skip poorly rated places if they have enough reviews
+        if (rating !== undefined && rating < 3.8 && reviewCount >= 10) return null;
+
+        const ratingPrefix =
+          rating !== undefined
+            ? `★ ${rating.toFixed(1).replace('.', ',')} (${reviewCount} reviews). `
+            : '';
+        const summary: string =
+          pl.editorialSummary?.text ||
+          (pl.formattedAddress
+            ? `${name}, gelegen aan ${pl.formattedAddress}.`
+            : `${name} — hoog beoordeelde stop langs jouw route.`);
+
+        const photoName: string | undefined = pl.photos?.[0]?.name;
+        const imageUrl = photoName
+          ? `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=480&key=${encodeURIComponent(
+              apiKey.trim()
+            )}`
+          : undefined;
+
+        const score =
+          64 +
+          (rating ? Math.max(0, (rating - 3.5) * 14) : 0) +
+          Math.min(22, Math.log10(reviewCount + 1) * 7);
+
+        const poi: POI = {
+          id: `gplaces-${pl.id}`,
+          name,
+          lat,
+          lng,
+          category: primaryCat,
+          categoryLabel: INTEREST_MAP[primaryCat].label,
+          description: `${ratingPrefix}${summary}`,
+          descriptionLang: 'nl',
+          imageUrl,
+          tags: {},
+          score,
+          distanceFromStart: haversineMeters(center, { lat, lng }),
+        };
+        return poi;
+      })
+      .filter((p): p is POI => p !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Discover POIs around a coordinate by running user-enabled sources in parallel.
  */
 export async function fetchPoisAround(
   center: LatLng,
@@ -732,7 +845,8 @@ export async function fetchPoisAround(
   selectedInterests: InterestId[],
   geoapifyApiKey?: string,
   opentripmapApiKey?: string,
-  poiSources?: PoiSourcesConfig
+  poiSources?: PoiSourcesConfig,
+  googlePlacesApiKey?: string
 ): Promise<POI[]> {
   const effectiveInterests: InterestId[] =
     selectedInterests.length > 0 ? selectedInterests : [DEFAULT_INTEREST];
@@ -743,29 +857,34 @@ export async function fetchPoisAround(
     wikidata: true,
     commons: true,
     wikipedia: true,
+    googlePlaces: true,
     geoapify: true,
     opentripmap: true,
   };
 
   // Run only user-enabled POI sources in parallel!
-  const [osmPois, wikidataPois, commonsPois, wikiPois, geoapifyPois, otmPois] = await Promise.all([
-    src.osm ? fetchOverpassPois(center, clampedRadius, effectiveInterests) : Promise.resolve([]),
-    src.wikidata
-      ? fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0])
-      : Promise.resolve([]),
-    src.commons
-      ? fetchWikimediaCommonsGeoPois(center, clampedRadius, effectiveInterests[0])
-      : Promise.resolve([]),
-    src.wikipedia
-      ? fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0])
-      : Promise.resolve([]),
-    src.geoapify && geoapifyApiKey
-      ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
-      : Promise.resolve([]),
-    src.opentripmap && opentripmapApiKey
-      ? fetchOpenTripMapPois(center, clampedRadius, effectiveInterests, opentripmapApiKey)
-      : Promise.resolve([]),
-  ]);
+  const [osmPois, googlePois, wikidataPois, commonsPois, wikiPois, geoapifyPois, otmPois] =
+    await Promise.all([
+      src.osm ? fetchOverpassPois(center, clampedRadius, effectiveInterests) : Promise.resolve([]),
+      src.googlePlaces && googlePlacesApiKey
+        ? fetchGooglePlacesPois(center, clampedRadius, effectiveInterests, googlePlacesApiKey)
+        : Promise.resolve([]),
+      src.wikidata
+        ? fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0])
+        : Promise.resolve([]),
+      src.commons
+        ? fetchWikimediaCommonsGeoPois(center, clampedRadius, effectiveInterests[0])
+        : Promise.resolve([]),
+      src.wikipedia
+        ? fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0])
+        : Promise.resolve([]),
+      src.geoapify && geoapifyApiKey
+        ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
+        : Promise.resolve([]),
+      src.opentripmap && opentripmapApiKey
+        ? fetchOpenTripMapPois(center, clampedRadius, effectiveInterests, opentripmapApiKey)
+        : Promise.resolve([]),
+    ]);
 
   // Merge & deduplicate
   const merged: POI[] = [];
@@ -782,6 +901,7 @@ export async function fetchPoisAround(
     merged.push(poi);
   };
 
+  googlePois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   osmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   otmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   geoapifyPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
