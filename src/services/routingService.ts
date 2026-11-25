@@ -623,6 +623,7 @@ export async function generateLoopRoute(params: {
   speedKmh: number;
   orsApiKey?: string;
   geoapifyApiKey?: string;
+  opentripmapApiKey?: string;
   geminiApiKey?: string;
   onProgress?: (message: string) => void;
 }): Promise<GeneratedRoute> {
@@ -636,6 +637,7 @@ export async function generateLoopRoute(params: {
     speedKmh,
     orsApiKey,
     geoapifyApiKey,
+    opentripmapApiKey,
     geminiApiKey,
     onProgress,
   } = params;
@@ -656,7 +658,7 @@ export async function generateLoopRoute(params: {
   // Search a full circle around start so we can pick the POI-richest direction!
   const searchRadius = Math.max(1200, Math.min(10000, Math.round(loopRadius * 1.25)));
   const [allPois, trailNodes] = await Promise.all([
-    fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey),
+    fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey, opentripmapApiKey),
     surfacePreference === 'trails'
       ? fetchTrailNodesAround(start, searchRadius)
       : Promise.resolve([]),

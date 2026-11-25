@@ -6,6 +6,7 @@ export interface SyncedKeysPayload {
   maptilerApiKey?: string;
   geminiApiKey?: string;
   geoapifyApiKey?: string;
+  opentripmapApiKey?: string;
   voiceRegion?: AppSettings['voiceRegion'];
   voiceGender?: AppSettings['voiceGender'];
 }
@@ -62,6 +63,7 @@ export async function encryptKeysPayload(
     maptilerApiKey: settings.maptilerApiKey.trim() || undefined,
     geminiApiKey: settings.geminiApiKey.trim() || undefined,
     geoapifyApiKey: settings.geoapifyApiKey.trim() || undefined,
+    opentripmapApiKey: settings.opentripmapApiKey.trim() || undefined,
     voiceRegion: settings.voiceRegion,
     voiceGender: settings.voiceGender,
   };

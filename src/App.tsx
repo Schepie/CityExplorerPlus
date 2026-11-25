@@ -325,6 +325,7 @@ export function App() {
         speedKmh,
         orsApiKey: settings.orsApiKey,
         geoapifyApiKey: settings.geoapifyApiKey,
+        opentripmapApiKey: settings.opentripmapApiKey,
         geminiApiKey: settings.geminiApiKey,
         onProgress: setProgressText,
       });

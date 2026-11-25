@@ -21,7 +21,12 @@ interface ApiKeysPanelProps {
   onUpdateSettings: (patch: Partial<AppSettings>) => void;
 }
 
-type ApiKeyField = 'orsApiKey' | 'maptilerApiKey' | 'geminiApiKey' | 'geoapifyApiKey';
+type ApiKeyField =
+  | 'orsApiKey'
+  | 'maptilerApiKey'
+  | 'geminiApiKey'
+  | 'geoapifyApiKey'
+  | 'opentripmapApiKey';
 
 interface ApiProviderConfig {
   field: ApiKeyField;
@@ -96,6 +101,22 @@ const API_PROVIDERS: ApiProviderConfig[] = [
     testFn: async (key) => {
       const resp = await fetch(
         `https://api.geoapify.com/v2/places?categories=tourism.sights&filter=circle:5.1214,52.0907,500&limit=1&apiKey=${encodeURIComponent(
+          key
+        )}`
+      );
+      return resp.ok;
+    },
+  },
+  {
+    field: 'opentripmapApiKey',
+    name: 'OpenTripMap',
+    badge: 'Toeristische 1-3★ POIs',
+    description: 'Gratis tier. Speciaal voor toeristische highlights met populariteitsrating.',
+    signupUrl: 'https://dev.opentripmap.org/',
+    placeholder: 'Plak OpenTripMap API-key...',
+    testFn: async (key) => {
+      const resp = await fetch(
+        `https://api.opentripmap.com/0.1/en/places/radius?radius=1000&lon=5.1214&lat=52.0907&limit=1&format=json&apikey=${encodeURIComponent(
           key
         )}`
       );

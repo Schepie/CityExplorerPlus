@@ -454,27 +454,202 @@ way["highway"="footway"]["surface"~"^(unpaved|gravel|fine_gravel|compacted|dirt|
   return [];
 }
 
+/** Descriptions on Wikidata that indicate administrative areas or non-POI items */
+const WIKIDATA_SKIP_DESC_PATTERN =
+  /\b(plaats in|dorp in|gehucht in|deelgemeente|gemeente in|stad in|arrondissement|provincie|spoorwegstation|metrostation|tramhalte|vereniging|voetbalclub|sportclub|school|ziekenhuis|rivier in|beek in|waterloop|gewestweg|rijksweg|autosnelweg|snelweg|ringweg|verkeersbrug|liggerbrug|bedrijventerrein|village in|municipality in|town in|city in|district in|railway station|river in)\b/i;
+
+/**
+ * Fast, 100% free Wikidata GeoSearch + Entity enrichment (0 API key, 0 tokens, CORS-enabled).
+ * Discovers real local heritage (kapellen, kastelen, natuurgebieden, monumenten) with
+ * sitelinks popularity scores and direct Wikimedia Commons P18 photos!
+ */
+async function fetchWikidataGeoPois(
+  center: LatLng,
+  radiusMeters: number,
+  category: InterestId
+): Promise<POI[]> {
+  try {
+    const r = Math.min(10000, Math.max(600, Math.round(radiusMeters)));
+    const geoUrl = `https://www.wikidata.org/w/api.php?action=query&list=geosearch&gscoord=${center.lat.toFixed(
+      5
+    )}|${center.lng.toFixed(5)}&gsradius=${r}&gslimit=35&format=json&origin=*`;
+    const c1 = new AbortController();
+    const t1 = setTimeout(() => c1.abort(), 7000);
+    const geoResp = await fetch(geoUrl, { signal: c1.signal });
+    clearTimeout(t1);
+    if (!geoResp.ok) return [];
+    const geoJson = await geoResp.json();
+    const items: Array<{ title: string; lat: number; lon: number; dist: number }> =
+      geoJson?.query?.geosearch || [];
+    if (items.length === 0) return [];
+
+    const ids = items.map((i) => i.title).join('|');
+    const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(
+      ids
+    )}&props=labels|descriptions|claims|sitelinks&languages=nl|en&format=json&origin=*`;
+    const c2 = new AbortController();
+    const t2 = setTimeout(() => c2.abort(), 7000);
+    const entResp = await fetch(entUrl, { signal: c2.signal });
+    clearTimeout(t2);
+    if (!entResp.ok) return [];
+    const entJson = await entResp.json();
+    const entities: Record<string, any> = entJson?.entities || {};
+
+    const pois: POI[] = [];
+    for (const item of items) {
+      const ent = entities[item.title];
+      if (!ent) continue;
+
+      const labelNl: string | undefined = ent.labels?.nl?.value;
+      const labelEn: string | undefined = ent.labels?.en?.value;
+      const name = (labelNl || labelEn || '').trim();
+      if (!name || name.length < 2 || NON_POI_TITLE_PATTERN.test(name)) continue;
+
+      const descNl: string | undefined = ent.descriptions?.nl?.value;
+      const descEn: string | undefined = ent.descriptions?.en?.value;
+      const rawDesc = (descNl || descEn || '').trim();
+      if (rawDesc && WIKIDATA_SKIP_DESC_PATTERN.test(rawDesc)) continue;
+      if (rawDesc && INFRA_DESC_PATTERN.test(rawDesc) && !HISTORIC_VALUE_PATTERN.test(rawDesc)) {
+        continue;
+      }
+
+      // Extract Wikimedia Commons P18 photo if available
+      const p18File: string | undefined =
+        ent.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      const imageUrl = p18File
+        ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
+            p18File.replace(/ /g, '_')
+          )}?width=480`
+        : undefined;
+
+      // Sitelinks count = popularity signal; also get exact nlwiki/enwiki title if present
+      const sitelinks = ent.sitelinks || {};
+      const sitelinkCount = Object.keys(sitelinks).length;
+      const nlWikiTitle: string | undefined = sitelinks.nlwiki?.title;
+      const enWikiTitle: string | undefined = sitelinks.enwiki?.title;
+      const wikipediaTag = nlWikiTitle
+        ? `nl:${nlWikiTitle}`
+        : enWikiTitle
+          ? `en:${enWikiTitle}`
+          : undefined;
+
+      // Infer better category from Dutch/English description
+      let inferredCat: InterestId = category;
+      if (/natuurgebied|bos|park|tuin|heide|nature reserve|forest/i.test(rawDesc)) {
+        inferredCat = 'natuur';
+      } else if (/kasteel|kapel|kerk|hoeve|molen|monument|erfgoed|castle|chapel|church/i.test(rawDesc)) {
+        inferredCat = 'erfgoed';
+      } else if (/museum|theater|cultuur/i.test(rawDesc)) {
+        inferredCat = 'cultuur';
+      } else if (/beeld|kunst|standbeeld|sculpture|artwork/i.test(rawDesc)) {
+        inferredCat = 'kunst';
+      }
+
+      const description = rawDesc
+        ? `${name} — ${rawDesc.charAt(0).toUpperCase()}${rawDesc.slice(1)}.`
+        : `${name} — erfgoed- of bezienswaardigheid langs jouw route.`;
+
+      const score = 46 + Math.min(30, sitelinkCount * 4) + (imageUrl ? 12 : 0);
+
+      pois.push({
+        id: `wd-${item.title}`,
+        name,
+        lat: item.lat,
+        lng: item.lon,
+        category: inferredCat,
+        categoryLabel: INTEREST_MAP[inferredCat].label,
+        description,
+        descriptionLang: descNl ? 'nl' : descEn ? 'en' : 'nl',
+        imageUrl,
+        wikipediaTag,
+        wikidataTag: item.title,
+        tags: {},
+        score,
+        distanceFromStart: item.dist,
+      });
+    }
+
+    return pois;
+  } catch {
+    return [];
+  }
+}
+
+/** Optional OpenTripMap tourist POI search with built-in 1-3★ popularity ratings */
+async function fetchOpenTripMapPois(
+  center: LatLng,
+  clampedRadius: number,
+  effectiveInterests: InterestId[],
+  apiKey: string
+): Promise<POI[]> {
+  if (!apiKey.trim()) return [];
+  try {
+    const url = `https://api.opentripmap.com/0.1/en/places/radius?radius=${Math.round(
+      clampedRadius
+    )}&lon=${center.lng.toFixed(5)}&lat=${center.lat.toFixed(
+      5
+    )}&rate=2&limit=35&format=json&apikey=${encodeURIComponent(apiKey.trim())}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return [];
+    const list: Array<{
+      xid: string;
+      name: string;
+      rate: number;
+      kinds: string;
+      dist: number;
+      point: { lon: number; lat: number };
+    }> = await resp.json();
+    const primaryCat = effectiveInterests[0] ?? DEFAULT_INTEREST;
+
+    return list
+      .filter((item) => item.name && item.name.trim().length > 1 && !NON_POI_TITLE_PATTERN.test(item.name))
+      .map((item) => ({
+        id: `otm-${item.xid}`,
+        name: item.name.trim(),
+        lat: item.point.lat,
+        lng: item.point.lon,
+        category: primaryCat,
+        categoryLabel: INTEREST_MAP[primaryCat].label,
+        description: `${item.name.trim()} — populaire toeristische highlight langs jouw route.`,
+        descriptionLang: 'nl' as const,
+        tags: {},
+        score: 50 + (item.rate || 1) * 12,
+        distanceFromStart: item.dist,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Discover POIs around a coordinate by running OpenStreetMap Overpass,
- * Wikipedia GeoSearch (NL + EN), and optional Geoapify Places in parallel.
+ * Wikidata GeoSearch, Wikipedia GeoSearch (NL + EN), and optional Geoapify/OpenTripMap in parallel.
  */
 export async function fetchPoisAround(
   center: LatLng,
   radiusMeters: number,
   selectedInterests: InterestId[],
-  geoapifyApiKey?: string
+  geoapifyApiKey?: string,
+  opentripmapApiKey?: string
 ): Promise<POI[]> {
   const effectiveInterests: InterestId[] =
     selectedInterests.length > 0 ? selectedInterests : [DEFAULT_INTEREST];
 
   const clampedRadius = Math.min(Math.max(radiusMeters, 800), 10000);
 
-  // Run Overpass + Wikipedia GeoSearch (+ optional Geoapify) in parallel!
-  const [osmPois, wikiPois, geoapifyPois] = await Promise.all([
+  // Run Overpass + Wikidata + Wikipedia (+ optional Geoapify & OpenTripMap) in parallel!
+  const [osmPois, wikidataPois, wikiPois, geoapifyPois, otmPois] = await Promise.all([
     fetchOverpassPois(center, clampedRadius, effectiveInterests),
+    fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0]),
     fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0]),
     geoapifyApiKey
       ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
+      : Promise.resolve([]),
+    opentripmapApiKey
+      ? fetchOpenTripMapPois(center, clampedRadius, effectiveInterests, opentripmapApiKey)
       : Promise.resolve([]),
   ]);
 
@@ -494,7 +669,9 @@ export async function fetchPoisAround(
   };
 
   osmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
+  otmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   geoapifyPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
+  wikidataPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   wikiPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
 
   return merged.sort((a, b) => b.score - a.score);

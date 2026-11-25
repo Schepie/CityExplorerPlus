@@ -161,6 +161,7 @@ export interface AppSettings {
   maptilerApiKey: string;
   geminiApiKey: string;
   geoapifyApiKey: string;
+  opentripmapApiKey: string;
 }
 
 export interface SavedRoute {

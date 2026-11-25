@@ -51,6 +51,7 @@ export function KeySyncModal({
     settings.maptilerApiKey,
     settings.geminiApiKey,
     settings.geoapifyApiKey,
+    settings.opentripmapApiKey,
   ].filter((k) => k.trim().length > 5).length;
 
   const handleGenerateQr = async () => {
@@ -101,6 +102,10 @@ export function KeySyncModal({
       }
       if (payload.geoapifyApiKey) {
         patch.geoapifyApiKey = payload.geoapifyApiKey;
+        count++;
+      }
+      if (payload.opentripmapApiKey) {
+        patch.opentripmapApiKey = payload.opentripmapApiKey;
         count++;
       }
       if (payload.voiceRegion) patch.voiceRegion = payload.voiceRegion;

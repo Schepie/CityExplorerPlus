@@ -150,4 +150,5 @@ export const DEFAULT_SETTINGS = {
   maptilerApiKey: '',
   geminiApiKey: '',
   geoapifyApiKey: '',
+  opentripmapApiKey: '',
 };

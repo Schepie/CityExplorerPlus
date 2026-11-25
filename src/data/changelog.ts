@@ -5,9 +5,18 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.8.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.8.0',
+    date: '25 nov 2026',
+    title: 'Wikidata erfgoed-POIs & OpenTripMap',
+    items: [
+      'Gratis Wikidata GeoSearch toegevoegd (0 API-key): ontdekt lokale kapellen, kastelen, monumenten en natuurgebieden (zoals Herkenrodebos) met foto’s en sitelinks-populariteitsscore.',
+      'Optionele OpenTripMap API-key toegevoegd in het API’s-tabblad (inclusief 1-tik Plak, Test en versleutelde QR-sync).',
+    ],
+  },
   {
     version: '1.7.0',
     date: '25 nov 2026',
