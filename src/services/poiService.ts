@@ -624,9 +624,107 @@ async function fetchOpenTripMapPois(
   }
 }
 
+const CAMERA_FILENAME_PATTERN =
+  /^(img|dsc|dscn|dscf|p10|pxl|mvimg|vid|photo|image|picture|scan|\d{4}[-_]\d{2}[-_]\d{2})[\s_-]*\d*/i;
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 100% Free Wikimedia Commons GeoSearch (0 API key, 0 tokens, CORS-enabled).
+ * Finds geotagged local heritage & scenic photo spots (mills, chapels, historic inns, viewpoints)
+ * complete with real 500px photos and descriptions!
+ */
+async function fetchWikimediaCommonsGeoPois(
+  center: LatLng,
+  radiusMeters: number,
+  category: InterestId
+): Promise<POI[]> {
+  try {
+    const r = Math.min(10000, Math.max(600, Math.round(radiusMeters)));
+    const url =
+      `https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch` +
+      `&ggscoord=${center.lat.toFixed(5)}|${center.lng.toFixed(5)}&ggsradius=${r}&ggslimit=30&ggsnamespace=6` +
+      `&prop=coordinates|imageinfo&iiprop=url|extmetadata&iiurlwidth=480&format=json&origin=*`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7500);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return [];
+
+    const json = await resp.json();
+    const pages: Record<string, any> = json?.query?.pages || {};
+    const pois: POI[] = [];
+
+    for (const page of Object.values(pages)) {
+      const coord = page?.coordinates?.[0];
+      const info = page?.imageinfo?.[0];
+      if (!coord || !info) continue;
+
+      const rawTitle: string = (page.title || '')
+        .replace(/^File:/i, '')
+        .replace(/\.[a-z0-9]{2,5}$/i, '')
+        .replace(/_/g, ' ')
+        .trim();
+
+      if (!rawTitle || rawTitle.length < 4) continue;
+      if (CAMERA_FILENAME_PATTERN.test(rawTitle)) continue;
+      if (NON_POI_TITLE_PATTERN.test(rawTitle)) continue;
+
+      // Remove trailing sequence numbers like " 01" or " (2)"
+      const cleanName = rawTitle.replace(/[\s_-]+(\d{1,3}|\(\d+\))$/g, '').trim();
+      if (cleanName.length < 4) continue;
+
+      const rawMetaDesc = info.extmetadata?.ImageDescription?.value
+        ? stripHtmlTags(String(info.extmetadata.ImageDescription.value))
+        : '';
+
+      if (rawMetaDesc && INFRA_DESC_PATTERN.test(rawMetaDesc) && !HISTORIC_VALUE_PATTERN.test(rawMetaDesc)) {
+        continue;
+      }
+
+      const description =
+        rawMetaDesc && rawMetaDesc.length >= 15
+          ? rawMetaDesc.slice(0, 260)
+          : `${cleanName} — fotogenieke plek en lokale bezienswaardigheid langs jouw route.`;
+
+      let inferredCat: InterestId = category;
+      if (/molen|kapel|kerk|hoeve|abdij|kasteel|herberg|mill|chapel|abbey|castle/i.test(cleanName)) {
+        inferredCat = 'erfgoed';
+      } else if (/bos|park|natuur|vijver|heide|sunset|forest|nature/i.test(cleanName)) {
+        inferredCat = 'natuur';
+      }
+
+      const dist = haversineMeters(center, { lat: coord.lat, lng: coord.lon });
+      pois.push({
+        id: `commons-${page.pageid}`,
+        name: cleanName,
+        lat: coord.lat,
+        lng: coord.lon,
+        category: inferredCat,
+        categoryLabel: INTEREST_MAP[inferredCat].label,
+        description,
+        descriptionLang: 'nl',
+        imageUrl: info.thumburl || info.url,
+        wikipediaUrl: info.descriptionurl,
+        tags: {},
+        score: 54,
+        distanceFromStart: dist,
+      });
+    }
+
+    return pois;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Discover POIs around a coordinate by running OpenStreetMap Overpass,
- * Wikidata GeoSearch, Wikipedia GeoSearch (NL + EN), and optional Geoapify/OpenTripMap in parallel.
+ * Wikidata GeoSearch, Wikimedia Commons GeoSearch, Wikipedia GeoSearch (NL + EN),
+ * and optional Geoapify/OpenTripMap in parallel.
  */
 export async function fetchPoisAround(
   center: LatLng,
@@ -640,10 +738,11 @@ export async function fetchPoisAround(
 
   const clampedRadius = Math.min(Math.max(radiusMeters, 800), 10000);
 
-  // Run Overpass + Wikidata + Wikipedia (+ optional Geoapify & OpenTripMap) in parallel!
-  const [osmPois, wikidataPois, wikiPois, geoapifyPois, otmPois] = await Promise.all([
+  // Run Overpass + Wikidata + Wikimedia Commons + Wikipedia (+ optional Geoapify & OpenTripMap) in parallel!
+  const [osmPois, wikidataPois, commonsPois, wikiPois, geoapifyPois, otmPois] = await Promise.all([
     fetchOverpassPois(center, clampedRadius, effectiveInterests),
     fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0]),
+    fetchWikimediaCommonsGeoPois(center, clampedRadius, effectiveInterests[0]),
     fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0]),
     geoapifyApiKey
       ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
@@ -672,6 +771,7 @@ export async function fetchPoisAround(
   otmPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   geoapifyPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   wikidataPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
+  commonsPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
   wikiPois.sort((a, b) => b.score - a.score).forEach(addIfUnique);
 
   return merged.sort((a, b) => b.score - a.score);

@@ -1,8 +1,7 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "releasedAt": "2026-11-25",
   "highlights": [
-    "Gratis Wikidata GeoSearch toegevoegd (0 API-key): vindt lokale kapellen, kerken, kastelen, natuurgebieden & erfgoed met directe Wikimedia-foto's en populariteitsscore!",
-    "Optionele OpenTripMap API-key toegevoegd in het API's-tabblad (incl. QR-sync)"
+    "Gratis Wikimedia Commons GeoSearch toegevoegd (0 API-key): ontdekt lokale fotogenieke erfgoedplekken (molens, kapellen, dorpsherbergen, natuur) met echte foto's!"
   ]
 }

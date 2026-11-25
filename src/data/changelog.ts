@@ -5,9 +5,17 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.8.0';
+export const APP_VERSION = '1.8.1';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.8.1',
+    date: '25 nov 2026',
+    title: 'Wikimedia Commons GeoSearch (lokale fotoparels)',
+    items: [
+      'Gratis Wikimedia Commons GeoSearch toegevoegd (0 API-key): vindt lokale molens, kapellen, historische gebouwen en natuurplekken met echte foto’s en omschrijvingen.',
+    ],
+  },
   {
     version: '1.8.0',
     date: '25 nov 2026',
