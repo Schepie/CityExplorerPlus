@@ -1,7 +1,7 @@
 {
-  "version": "1.8.1",
+  "version": "1.8.2",
   "releasedAt": "2026-11-25",
   "highlights": [
-    "Gratis Wikimedia Commons GeoSearch toegevoegd (0 API-key): ontdekt lokale fotogenieke erfgoedplekken (molens, kapellen, dorpsherbergen, natuur) met echte foto's!"
+    "Zelf POI-bronnen aan- en uitzetten in het Optiemenu (OpenStreetMap, Wikidata, Wikimedia Commons, Wikipedia, Geoapify & OpenTripMap)"
   ]
 }

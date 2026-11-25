@@ -399,6 +399,84 @@ export function SettingsDrawer({
                 </label>
               </div>
 
+              {/* Selectable POI Sources */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  POI-bronnen kiezen
+                </h3>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                  {(
+                    [
+                      {
+                        key: 'osm',
+                        label: 'OpenStreetMap (Overpass)',
+                        desc: 'Interesse-tags: erfgoed, parken, kunst & horeca (gratis)',
+                        needsKey: false,
+                      },
+                      {
+                        key: 'wikidata',
+                        label: 'Wikidata Erfgoed',
+                        desc: 'Kapellen, kastelen, natuurgebieden & populariteitsscore (gratis)',
+                        needsKey: false,
+                      },
+                      {
+                        key: 'commons',
+                        label: 'Wikimedia Commons',
+                        desc: 'Lokale fotogenieke plekken (molens, herbergen) met foto (gratis)',
+                        needsKey: false,
+                      },
+                      {
+                        key: 'wikipedia',
+                        label: 'Wikipedia (NL + EN)',
+                        desc: 'Uitgebreide artikelen, verhalen & foto’s (gratis)',
+                        needsKey: false,
+                      },
+                      {
+                        key: 'geoapify',
+                        label: 'Geoapify Places',
+                        desc: settings.geoapifyApiKey.trim()
+                          ? 'Actief met jouw Geoapify API-key'
+                          : 'Optioneel — vul key in onder tabblad API’s',
+                        needsKey: !settings.geoapifyApiKey.trim(),
+                      },
+                      {
+                        key: 'opentripmap',
+                        label: 'OpenTripMap',
+                        desc: settings.opentripmapApiKey.trim()
+                          ? 'Actief met jouw OpenTripMap API-key'
+                          : 'Optioneel — vul key in onder tabblad API’s',
+                        needsKey: !settings.opentripmapApiKey.trim(),
+                      },
+                    ] as const
+                  ).map((item) => (
+                    <label
+                      key={item.key}
+                      className={`flex items-center justify-between gap-2 py-1.5 border-b last:border-b-0 border-slate-200/60 cursor-pointer ${
+                        item.needsKey ? 'opacity-60' : ''
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900">{item.label}</div>
+                        <div className="text-[11px] text-slate-500 leading-tight">{item.desc}</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.poiSources[item.key]}
+                        onChange={(e) =>
+                          onUpdateSettings({
+                            poiSources: {
+                              ...settings.poiSources,
+                              [item.key]: e.target.checked,
+                            },
+                          })
+                        }
+                        className="w-4 h-4 accent-teal-600 rounded shrink-0"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               {/* Quick shortcut to API Keys tab */}
               <button
                 type="button"

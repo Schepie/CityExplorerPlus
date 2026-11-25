@@ -327,6 +327,7 @@ export function App() {
         geoapifyApiKey: settings.geoapifyApiKey,
         opentripmapApiKey: settings.opentripmapApiKey,
         geminiApiKey: settings.geminiApiKey,
+        poiSources: settings.poiSources,
         onProgress: setProgressText,
       });
 

@@ -6,6 +6,7 @@ import type {
   LatLng,
   ManeuverType,
   POI,
+  PoiSourcesConfig,
   SurfacePreference,
   TurnStep,
 } from '../types';
@@ -625,6 +626,7 @@ export async function generateLoopRoute(params: {
   geoapifyApiKey?: string;
   opentripmapApiKey?: string;
   geminiApiKey?: string;
+  poiSources?: PoiSourcesConfig;
   onProgress?: (message: string) => void;
 }): Promise<GeneratedRoute> {
   const {
@@ -639,6 +641,7 @@ export async function generateLoopRoute(params: {
     geoapifyApiKey,
     opentripmapApiKey,
     geminiApiKey,
+    poiSources,
     onProgress,
   } = params;
 
@@ -658,7 +661,14 @@ export async function generateLoopRoute(params: {
   // Search a full circle around start so we can pick the POI-richest direction!
   const searchRadius = Math.max(1200, Math.min(10000, Math.round(loopRadius * 1.25)));
   const [allPois, trailNodes] = await Promise.all([
-    fetchPoisAround(start, searchRadius, effectiveInterests, geoapifyApiKey, opentripmapApiKey),
+    fetchPoisAround(
+      start,
+      searchRadius,
+      effectiveInterests,
+      geoapifyApiKey,
+      opentripmapApiKey,
+      poiSources
+    ),
     surfacePreference === 'trails'
       ? fetchTrailNodesAround(start, searchRadius)
       : Promise.resolve([]),

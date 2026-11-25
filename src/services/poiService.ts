@@ -1,5 +1,5 @@
 import { DEFAULT_INTEREST, INTEREST_MAP } from '../data/interests';
-import type { InterestId, LatLng, POI } from '../types';
+import type { InterestId, LatLng, POI, PoiSourcesConfig } from '../types';
 import { haversineMeters } from '../utils/geo';
 
 const OVERPASS_ENDPOINTS = [
@@ -731,23 +731,38 @@ export async function fetchPoisAround(
   radiusMeters: number,
   selectedInterests: InterestId[],
   geoapifyApiKey?: string,
-  opentripmapApiKey?: string
+  opentripmapApiKey?: string,
+  poiSources?: PoiSourcesConfig
 ): Promise<POI[]> {
   const effectiveInterests: InterestId[] =
     selectedInterests.length > 0 ? selectedInterests : [DEFAULT_INTEREST];
 
   const clampedRadius = Math.min(Math.max(radiusMeters, 800), 10000);
+  const src: PoiSourcesConfig = poiSources ?? {
+    osm: true,
+    wikidata: true,
+    commons: true,
+    wikipedia: true,
+    geoapify: true,
+    opentripmap: true,
+  };
 
-  // Run Overpass + Wikidata + Wikimedia Commons + Wikipedia (+ optional Geoapify & OpenTripMap) in parallel!
+  // Run only user-enabled POI sources in parallel!
   const [osmPois, wikidataPois, commonsPois, wikiPois, geoapifyPois, otmPois] = await Promise.all([
-    fetchOverpassPois(center, clampedRadius, effectiveInterests),
-    fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0]),
-    fetchWikimediaCommonsGeoPois(center, clampedRadius, effectiveInterests[0]),
-    fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0]),
-    geoapifyApiKey
+    src.osm ? fetchOverpassPois(center, clampedRadius, effectiveInterests) : Promise.resolve([]),
+    src.wikidata
+      ? fetchWikidataGeoPois(center, clampedRadius, effectiveInterests[0])
+      : Promise.resolve([]),
+    src.commons
+      ? fetchWikimediaCommonsGeoPois(center, clampedRadius, effectiveInterests[0])
+      : Promise.resolve([]),
+    src.wikipedia
+      ? fetchWikipediaGeoPois(center, clampedRadius, effectiveInterests[0])
+      : Promise.resolve([]),
+    src.geoapify && geoapifyApiKey
       ? fetchGeoapifyPois(center, clampedRadius, effectiveInterests, geoapifyApiKey)
       : Promise.resolve([]),
-    opentripmapApiKey
+    src.opentripmap && opentripmapApiKey
       ? fetchOpenTripMapPois(center, clampedRadius, effectiveInterests, opentripmapApiKey)
       : Promise.resolve([]),
   ]);

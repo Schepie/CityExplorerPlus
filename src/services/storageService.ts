@@ -7,10 +7,18 @@ const SAVED_ROUTES_KEY = 'cep_saved_routes_v1';
 export function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (!raw) return { ...DEFAULT_SETTINGS, poiSources: { ...DEFAULT_SETTINGS.poiSources } };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      poiSources: {
+        ...DEFAULT_SETTINGS.poiSources,
+        ...(parsed.poiSources || {}),
+      },
+    };
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, poiSources: { ...DEFAULT_SETTINGS.poiSources } };
   }
 }
 

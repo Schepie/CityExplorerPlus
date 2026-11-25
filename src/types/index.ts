@@ -145,6 +145,15 @@ export interface GeneratedRoute {
 export type VoiceRegion = 'nl-BE' | 'nl-NL';
 export type VoiceGender = 'auto' | 'female' | 'male';
 
+export interface PoiSourcesConfig {
+  osm: boolean;
+  wikidata: boolean;
+  commons: boolean;
+  wikipedia: boolean;
+  geoapify: boolean;
+  opentripmap: boolean;
+}
+
 export interface AppSettings {
   turnByTurnVoice: boolean;
   poiSoundEnabled: boolean;
@@ -157,6 +166,7 @@ export interface AppSettings {
   cyclingSpeedKmh: number; // default 18
   poiTriggerRadiusMeters: number; // default 60
   keepScreenAwake: boolean;
+  poiSources: PoiSourcesConfig;
   orsApiKey: string;
   maptilerApiKey: string;
   geminiApiKey: string;

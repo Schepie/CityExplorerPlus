@@ -5,9 +5,17 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.8.1';
+export const APP_VERSION = '1.8.2';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.8.2',
+    date: '25 nov 2026',
+    title: 'Zelf POI-bronnen selecteren in instellingen',
+    items: [
+      'Kies zelf welke POI-bronnen actief zijn in het Optiemenu: OpenStreetMap, Wikidata, Wikimedia Commons, Wikipedia, Geoapify en OpenTripMap.',
+    ],
+  },
   {
     version: '1.8.1',
     date: '25 nov 2026',
