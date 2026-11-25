@@ -24,7 +24,8 @@ interface RoutingResult {
   distanceMeters: number;
   durationSeconds: number;
   steps: TurnStep[];
-  provider: 'openrouteservice' | 'osrm';
+  unpavedPercent?: number;
+  provider: 'brouter' | 'openrouteservice' | 'osrm';
 }
 
 interface LoopWaypointBuild {
@@ -70,9 +71,36 @@ function buildCalibratedLoopWaypoints(
   const selectedPois: POI[] = [];
   const innerWaypoints: LatLng[] = [];
 
-  for (const tpl of anchorTemplates) {
+  // In 'trails' mode, dedicate alternating anchors to real unpaved trails so the loop
+  // actively enters forest/unpaved paths (e.g. off Monninxstraat) instead of sticking to paved village roads!
+  const findNearestTrail = (anchor: LatLng): LatLng | null => {
+    if (trailNodes.length === 0) return null;
+    let nearestTrail: LatLng | null = null;
+    let nearestDist = Math.max(550, loopRadiusMeters * 0.6);
+    for (const tn of trailNodes) {
+      const d = haversineMeters(anchor, tn);
+      if (d < nearestDist && haversineMeters(start, tn) >= 120) {
+        nearestDist = d;
+        nearestTrail = tn;
+      }
+    }
+    return nearestTrail;
+  };
+
+  for (let idx = 0; idx < anchorTemplates.length; idx++) {
+    const tpl = anchorTemplates[idx];
     const bearing = (sectorCenterDeg + tpl.angleOffset + 360) % 360;
     const anchor = destinationPoint(start, bearing, loopRadiusMeters * tpl.radiusFactor);
+
+    // When unpaved trails are requested, force at least 2 anchors (index 1 & 2/3) onto real trails!
+    const preferTrailOnThisAnchor = trailNodes.length > 0 && (idx === 1 || idx === 3);
+    if (preferTrailOnThisAnchor) {
+      const trailPt = findNearestTrail(anchor);
+      if (trailPt) {
+        innerWaypoints.push(trailPt);
+        continue;
+      }
+    }
 
     // Find best unused POI within snapRadius of this anchor
     let bestPoi: POI | null = null;
@@ -107,20 +135,8 @@ function buildCalibratedLoopWaypoints(
       usedPoiIds.add(bestPoi.id);
       selectedPois.push(bestPoi);
       innerWaypoints.push({ lat: bestPoi.lat, lng: bestPoi.lng });
-    } else if (trailNodes.length > 0) {
-      // Snap geometric anchor onto the closest real unpaved hiking/forest trail!
-      let nearestTrail: LatLng | null = null;
-      let nearestDist = Math.max(400, loopRadiusMeters * 0.55);
-      for (const tn of trailNodes) {
-        const d = haversineMeters(anchor, tn);
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearestTrail = tn;
-        }
-      }
-      innerWaypoints.push(nearestTrail ?? anchor);
     } else {
-      innerWaypoints.push(anchor);
+      innerWaypoints.push(findNearestTrail(anchor) ?? anchor);
     }
   }
 
@@ -247,6 +263,162 @@ function translateOsrmStep(
     maneuverType,
     location: { lat: maneuver.location[1], lng: maneuver.location[0] },
     cumulativeDistanceMeters,
+  };
+}
+
+/**
+ * Route via free BRouter (https://brouter.de/brouter) — the gold standard for European
+ * unpaved hiking trails (`hiking-mountain`), MTB/gravel (`mtb`), and scenic cycling (`trekking`).
+ * Actively avoids N-roads/highways and prioritizes forest paths & unpaved trails!
+ */
+async function routeWithBRouter(
+  waypoints: LatLng[],
+  activity: ActivityMode,
+  surfacePreference: SurfacePreference = 'trails'
+): Promise<RoutingResult> {
+  const profile =
+    activity === 'walking'
+      ? 'hiking-mountain'
+      : surfacePreference === 'trails'
+        ? 'mtb'
+        : surfacePreference === 'paved'
+          ? 'fastbike'
+          : 'trekking';
+
+  const lonlats = waypoints.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join('|');
+  const url = `https://brouter.de/brouter?lonlats=${encodeURIComponent(
+    lonlats
+  )}&profile=${profile}&alternativeidx=0&format=geojson&timode=3`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 14000);
+  const resp = await fetch(url, { signal: controller.signal });
+  clearTimeout(timer);
+  if (!resp.ok) {
+    throw new Error(`BRouter HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const feature = data?.features?.[0];
+  if (!feature?.geometry?.coordinates?.length) {
+    throw new Error('Geen route gevonden via BRouter');
+  }
+
+  const rawCoords: number[][] = feature.geometry.coordinates;
+  const coords: [number, number][] = rawCoords.map((c) => [c[0], c[1]]);
+  const cumDists = computeCumulativeDistances(coords);
+  const props = feature.properties || {};
+  const totalDistance = Number(props['track-length']) || cumDists[cumDists.length - 1] || 0;
+  const totalDuration = Number(props['total-time']) || Math.round(totalDistance / 1.3);
+
+  // Compute exact percentage of unpaved / hiking trail segments from BRouter WayTags
+  const messages: string[][] = Array.isArray(props.messages) ? props.messages : [];
+  let unpavedMeters = 0;
+  let taggedMeters = 0;
+  for (let i = 1; i < messages.length; i++) {
+    const segDist = Number(messages[i][3]) || 0;
+    const wayTags = String(messages[i][9] || '');
+    taggedMeters += segDist;
+    if (
+      /highway=(path|track|bridleway|footway)|surface=(unpaved|gravel|fine_gravel|compacted|dirt|earth|ground|sand|grass|woodchips|mud)|tracktype=grade[2-5]/i.test(
+        wayTags
+      ) &&
+      !/surface=(asphalt|paved|concrete)/i.test(wayTags)
+    ) {
+      unpavedMeters += segDist;
+    }
+  }
+  const unpavedPercent =
+    taggedMeters > 0 ? Math.min(100, Math.round((unpavedMeters / taggedMeters) * 100)) : undefined;
+
+  // Translate BRouter voicehints [coordIdx, cmd, exit, distM, angle] into Dutch TurnSteps
+  const steps: TurnStep[] = [
+    {
+      index: 0,
+      instruction:
+        activity === 'walking' ? 'Start de wandellus over het pad' : 'Start de fietslus',
+      streetName: '',
+      distanceMeters: 0,
+      durationSeconds: 0,
+      maneuverType: 'depart',
+      location: { lat: coords[0][1], lng: coords[0][0] },
+      cumulativeDistanceMeters: 0,
+    },
+  ];
+
+  const voicehints: Array<[number, number, number, number, number]> = Array.isArray(props.voicehints)
+    ? props.voicehints
+    : [];
+
+  const mapBRouterCmd = (
+    cmd: number,
+    exit: number
+  ): { type: ManeuverType; text: string } => {
+    switch (cmd) {
+      case 2:
+        return { type: 'turn-left', text: 'Sla linksaf' };
+      case 3:
+        return { type: 'turn-slight-left', text: 'Buig flauw links af' };
+      case 4:
+        return { type: 'turn-sharp-left', text: 'Sla scherp linksaf' };
+      case 5:
+        return { type: 'turn-right', text: 'Sla rechtsaf' };
+      case 6:
+        return { type: 'turn-slight-right', text: 'Buig flauw rechts af' };
+      case 7:
+        return { type: 'turn-sharp-right', text: 'Sla scherp rechtsaf' };
+      case 8:
+        return { type: 'fork-left', text: 'Houd links aan' };
+      case 9:
+        return { type: 'fork-right', text: 'Houd rechts aan' };
+      case 10:
+      case 11:
+        return { type: 'uturn', text: 'Keer om' };
+      case 13:
+        return {
+          type: 'roundabout',
+          text: `Neem op de rotonde de ${exit || 1}e afslag`,
+        };
+      default:
+        return { type: 'straight', text: 'Volg het pad rechtdoor' };
+    }
+  };
+
+  for (const hint of voicehints) {
+    const [coordIdx, cmd, exit, distM] = hint;
+    const clampedIdx = Math.min(coords.length - 1, Math.max(0, coordIdx));
+    const mapped = mapBRouterCmd(cmd, exit);
+    steps.push({
+      index: steps.length,
+      instruction: mapped.text,
+      streetName: '',
+      distanceMeters: Math.round(distM || 0),
+      durationSeconds: Math.round((distM || 0) / 1.3),
+      maneuverType: mapped.type,
+      location: { lat: coords[clampedIdx][1], lng: coords[clampedIdx][0] },
+      cumulativeDistanceMeters: cumDists[clampedIdx] ?? 0,
+    });
+  }
+
+  const last = coords[coords.length - 1];
+  steps.push({
+    index: steps.length,
+    instruction: 'Je bent terug bij het startpunt!',
+    streetName: '',
+    distanceMeters: 0,
+    durationSeconds: 0,
+    maneuverType: 'arrive',
+    location: { lat: last[1], lng: last[0] },
+    cumulativeDistanceMeters: totalDistance,
+  });
+
+  return {
+    coordinates: coords,
+    distanceMeters: totalDistance,
+    durationSeconds: totalDuration,
+    steps,
+    unpavedPercent,
+    provider: 'brouter',
   };
 }
 
@@ -490,33 +662,57 @@ export async function generateLoopRoute(params: {
       : Promise.resolve([]),
   ]);
 
-  // Rank the 4 compass sectors by total POI score so the loop naturally heads toward the best POIs!
+  // Rank the 4 compass sectors by POI score + unpaved trail bonus (when 'trails' is selected!)
   const candidateSectors = [35, 125, 215, 305];
   const angleDiff = (a: number, b: number) => {
     const d = Math.abs(a - b) % 360;
     return d > 180 ? 360 - d : d;
   };
   const rankedSectors = [...candidateSectors].sort((degA, degB) => {
-    const scoreFor = (deg: number) =>
-      allPois.reduce((sum, p) => {
+    const scoreFor = (deg: number) => {
+      const poiScore = allPois.reduce((sum, p) => {
         const d = haversineMeters(start, { lat: p.lat, lng: p.lng });
         if (d < 90 || d > loopRadius * 1.3) return sum;
         const brng = bearingDegrees(start, { lat: p.lat, lng: p.lng });
         return angleDiff(brng, deg) <= 60 ? sum + p.score : sum;
       }, 0);
+      const trailScore =
+        surfacePreference === 'trails'
+          ? trailNodes.reduce((sum, tn) => {
+              const d = haversineMeters(start, tn);
+              if (d < 120 || d > loopRadius * 1.25) return sum;
+              const brng = bearingDegrees(start, tn);
+              return angleDiff(brng, deg) <= 60 ? sum + 35 : sum;
+            }, 0)
+          : 0;
+      return poiScore + trailScore;
+    };
     return scoreFor(degB) - scoreFor(degA);
   });
   const sectorCenterDeg = rankedSectors[sectorIndex % rankedSectors.length];
 
   const computeRoute = async (wps: LatLng[]): Promise<RoutingResult> => {
+    // For unpaved trails / hiking paths, BRouter (hiking-mountain / mtb) is dramatically better
+    // than OSRM/ORS at avoiding N-roads and choosing real forest/unpaved paths!
+    if (surfacePreference === 'trails') {
+      try {
+        return await routeWithBRouter(wps, activity, surfacePreference);
+      } catch (err) {
+        console.warn('BRouter failed, falling back to ORS/OSRM:', err);
+      }
+    }
     if (orsApiKey && orsApiKey.trim().length > 10) {
       try {
         return await routeWithOpenRouteService(wps, activity, orsApiKey.trim(), surfacePreference);
       } catch (err) {
-        console.warn('ORS failed, falling back to OSRM:', err);
+        console.warn('ORS failed, falling back to BRouter/OSRM:', err);
       }
     }
-    return routeWithOsrm(wps, activity);
+    try {
+      return await routeWithBRouter(wps, activity, surfacePreference);
+    } catch {
+      return routeWithOsrm(wps, activity);
+    }
   };
 
   onProgress?.(
@@ -619,6 +815,7 @@ export async function generateLoopRoute(params: {
     name: `${modeLabel} · ${primaryLabel}`,
     activity,
     surfacePreference,
+    unpavedPercent: bestRouting.unpavedPercent,
     targetDistanceKm,
     actualDistanceMeters: bestRouting.distanceMeters,
     estimatedDurationSeconds,

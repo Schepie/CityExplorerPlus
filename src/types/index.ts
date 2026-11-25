@@ -123,6 +123,7 @@ export interface GeneratedRoute {
   name: string;
   activity: ActivityMode;
   surfacePreference?: SurfacePreference;
+  unpavedPercent?: number;
   targetDistanceKm: number;
   actualDistanceMeters: number;
   estimatedDurationSeconds: number;
@@ -138,7 +139,7 @@ export interface GeneratedRoute {
   sectorIndex: number;
   startLocation: LatLng;
   createdAt: string;
-  routingProvider: 'openrouteservice' | 'osrm';
+  routingProvider: 'brouter' | 'openrouteservice' | 'osrm';
 }
 
 export type VoiceRegion = 'nl-BE' | 'nl-NL';

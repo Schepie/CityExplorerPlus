@@ -64,7 +64,7 @@ export function App() {
   // Location state
   const [startLocation, setStartLocation] = useState<LatLng>(FALLBACK_POS);
   const [locationLabel, setLocationLabel] = useState<string>('Locatie bepalen...');
-  const [selectedCityName, setSelectedCityName] = useState<string | undefined>('Utrecht');
+  const [selectedCityName, setSelectedCityName] = useState<string | undefined>(undefined);
   const [gpsStatus, setGpsStatus] = useState<'locating' | 'ready' | 'manual'>('locating');
   const [recenterSignal, setRecenterSignal] = useState(0);
 
@@ -245,6 +245,7 @@ export function App() {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setStartLocation(coords);
         setGpsStatus('ready');
+        setSelectedCityName(undefined);
         setLocationLabel('Huidige GPS-locatie');
         setRecenterSignal((n) => n + 1);
         const rev = await reverseGeocode(coords);

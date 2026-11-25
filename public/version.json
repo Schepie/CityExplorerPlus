@@ -1,8 +1,9 @@
 {
-  "version": "1.6.1",
+  "version": "1.7.0",
   "releasedAt": "2026-11-25",
   "highlights": [
-    "Donkere nachtkaart omgezet naar gratis Esri Dark Gray (geen CARTO API-key meer nodig!)",
-    "Onverharde paden & wandel-/bospaden optie (🥾 Onverhard / ⚖️ Mix / 🛣️ Verhard)"
+    "BRouter (hiking-mountain / MTB) geïntegreerd: vermijdt drukke N-wegen en kiest actief voor echte onverharde wandel- en bospaden!",
+    "Toont nu het exacte percentage onverhard/wandelpad in het route-overzicht",
+    "Fix: standaard stadsnaam 'Utrecht' blijft niet meer hangen bij GPS-locatie"
   ]
 }

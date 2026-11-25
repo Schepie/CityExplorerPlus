@@ -5,9 +5,19 @@ export interface ReleaseNote {
   items: string[];
 }
 
-export const APP_VERSION = '1.6.1';
+export const APP_VERSION = '1.7.0';
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '1.7.0',
+    date: '25 nov 2026',
+    title: 'Echte BRouter wandel- & onverharde paden',
+    items: [
+      'BRouter (hiking-mountain / MTB / trekking) toegevoegd als primaire route-engine voor onverharde paden — vermijdt drukke gewestwegen (N-wegen) en kiest echte wandel- en bospaden.',
+      'Toont nu het exacte percentage onverhard/wandelpad in het route-overzicht.',
+      'Fix: stadsnaam "Utrecht" wordt niet meer onterecht getoond op andere GPS-locaties.',
+    ],
+  },
   {
     version: '1.6.1',
     date: '25 nov 2026',
